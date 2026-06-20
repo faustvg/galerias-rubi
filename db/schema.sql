@@ -1,13 +1,21 @@
 -- ============================================================
 --  GALERÍAS RUBÍ — Esquema de base de datos
---  Stack: PostgreSQL (local en Windows ahora; luego VPS Hetzner Ubuntu 24.04)
+--  Stack: PostgreSQL (local en Windows ahora; también en VPS Hetzner)
 --
 --  Orden de creación = orden de dependencias:
---    1. categorias  2. proveedores  3. productos  4. notas  5. partidas
+--    1. categorias  2. proveedores  3. productos
+--    4. usuarios    5. notas        6. partidas
 --  Las tablas "padre" se crean antes que las que las referencian.
+--  (usuarios va ANTES de notas porque notas referencia a usuarios.)
 --
---  Para cargar este archivo en psql:
---    \i 'D:/Faus_/muebles_rubi/schema.sql'
+--  Para cargar este archivo en psql (base de datos VACÍA):
+--    \i 'D:/Faus_/galerias_rubi/db/schema.sql'
+--
+--  NOTA sobre cambios de esquema:
+--  Este archivo es la "foto completa" del esquema actual (Opción A).
+--  Para aplicar cambios a una base de datos que YA EXISTE (ej. el VPS),
+--  no se re-ejecuta este archivo: se usan los archivos de migración en
+--  db/migrations/ (ej. 001_usuarios.sql con su ALTER TABLE).
 -- ============================================================
 
 
@@ -67,7 +75,49 @@ CREATE TABLE productos (
 
 
 -- ------------------------------------------------------------
--- 4. NOTAS  (encabezado de la transacción: cotización/pedido/venta)
+-- 4. USUARIOS  (cuentas del panel admin — autenticación y permisos)
+--
+--    REGLAS DE SEGURIDAD (no negociables):
+--    - La contraseña NUNCA se guarda en texto plano. Se guarda un
+--      HASH (revoltijo de una sola dirección). Aunque roben la base
+--      de datos, no pueden leer las contraseñas.
+--    - El hashing lo hace una librería probada (passlib/bcrypt) en
+--      el backend. NUNCA se programa el hashing a mano.
+--    - Autenticación basada en SESIONES (cookie HttpOnly), no JWT.
+--    - Esta tabla la maneja solo el superadmin.
+--
+--    Roles (de mayor a menor privilegio):
+--      'superadmin' -> Faust. Todo + gestión de usuarios.
+--      'admin'      -> hermanos. Todo lo operativo (catálogo, todas
+--                     las notas, dashboards, finanzas). Sin gestión
+--                     de usuarios.
+--      'viewer'     -> padres. Solo lectura de dashboards/resúmenes.
+--      'worker'     -> empleados. Crea productos/fotos. Maneja SOLO
+--                     sus propias notas. NO ve ventas ni finanzas de
+--                     otros ni el panorama general de dinero.
+--
+--    password_hash VARCHAR(255): los hashes de bcrypt ocupan ~60
+--      caracteres; dejamos margen.
+--    rol ... CHECK: la base RECHAZA cualquier rol fuera de los
+--      cuatro permitidos. Integridad a nivel DB.
+--    activo: permite desactivar a alguien sin borrarlo (ej. un
+--      empleado que se va). FALSE = no puede entrar, pero su
+--      historial de notas se conserva.
+-- ------------------------------------------------------------
+CREATE TABLE usuarios (
+    id            SERIAL PRIMARY KEY,
+    username      VARCHAR(50) UNIQUE NOT NULL,
+    nombre        VARCHAR(100) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    rol           VARCHAR(20) NOT NULL DEFAULT 'worker'
+                  CHECK (rol IN ('superadmin', 'admin', 'viewer', 'worker')),
+    activo        BOOLEAN NOT NULL DEFAULT true,
+    creado_en     TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+
+-- ------------------------------------------------------------
+-- 5. NOTAS  (encabezado de la transacción: cotización/pedido/venta)
 --    folio = número del talonario de papel (ej. '0986'). Es TEXTO,
 --      no entero, para conservar ceros a la izquierda.
 --    Cliente APLANADO aquí (nombre_cliente, telefono) — sin tabla
@@ -76,6 +126,20 @@ CREATE TABLE productos (
 --      no se puede escribir, nunca se desincroniza.
 --    consideraciones = notas de TODA la nota (ej. "entrega sábado").
 --    estatus: 'Presupuesto' / 'En proceso' / 'Entregado'.
+--
+--    usuario_id (NUEVO) = enlace al usuario del sistema que creó la
+--      nota. Es la base del aislamiento por usuario: un 'worker' solo
+--      consulta las notas WHERE usuario_id = su propio id; admin y
+--      superadmin ven todas. (El filtrado vive en el código de la API.)
+--      NULLABLE: las notas históricas (de papel) no tienen un usuario
+--      del sistema asignado. ON DELETE SET NULL: si se borrara un
+--      usuario, sus notas se conservan (registros financieros), solo
+--      pierden el enlace. (En la práctica se usa activo=false, no
+--      se borra.)
+--
+--    NOTA: 'vendedor' (texto libre, el nombre escrito en el papel) y
+--      'usuario_id' (enlace estructurado) coexisten: uno es el dato
+--      histórico/textual, el otro es para permisos y filtrado.
 -- ------------------------------------------------------------
 CREATE TABLE notas (
     folio            VARCHAR(20) PRIMARY KEY,
@@ -88,12 +152,13 @@ CREATE TABLE notas (
     vendedor         VARCHAR(100),
     nombre_cliente   VARCHAR(150),
     telefono         VARCHAR(20),
-    consideraciones  TEXT
+    consideraciones  TEXT,
+    usuario_id       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
 );
 
 
 -- ------------------------------------------------------------
--- 5. PARTIDAS  (una línea por producto con su propio precio)
+-- 6. PARTIDAS  (una línea por producto con su propio precio)
 --    Tabla puente que resuelve el muchos-a-muchos entre NOTAS y
 --    PRODUCTOS. REGLA: una partida = una cosa con su propio precio.
 --      Dos productos -> dos partidas bajo el mismo folio.
