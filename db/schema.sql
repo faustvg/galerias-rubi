@@ -71,6 +71,7 @@ CREATE TABLE productos (
     existencias      INTEGER NOT NULL DEFAULT 0,
     visible_en_sitio BOOLEAN NOT NULL DEFAULT true,
     descuento_pct    NUMERIC(5,2)
+    ubicaciones      TEXT[] DEFAULT '{}'
 );
 
 
