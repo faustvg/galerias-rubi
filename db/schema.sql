@@ -1,5 +1,11 @@
 -- ============================================================
 --  GALERÍAS RUBÍ — Esquema de base de datos
+--
+--  SECUENCIA PARA FOLIOS DIGITALES (se crea al final del archivo):
+--    Los talonarios de papel usan números puros ('0986').
+--    El sistema digital usa prefijo 'D-': 'D-00001', 'D-00002'.
+--    Así nunca chocan. La app también la crea con IF NOT EXISTS al
+--    arrancar, por lo que para bases existentes no hace falta migrar.
 --  Stack: PostgreSQL (local en Windows ahora; también en VPS Hetzner)
 --
 --  Orden de creación = orden de dependencias:
@@ -70,8 +76,9 @@ CREATE TABLE productos (
     fotos            TEXT[] DEFAULT '{}',
     existencias      INTEGER NOT NULL DEFAULT 0,
     visible_en_sitio BOOLEAN NOT NULL DEFAULT true,
-    descuento_pct    NUMERIC(5,2)
+    descuento_pct    NUMERIC(5,2),
     ubicaciones      TEXT[] DEFAULT '{}'
+    costo NUMERIC(10,2) NOT NULL DEFAULT 0
 );
 
 
@@ -154,7 +161,7 @@ CREATE TABLE notas (
     nombre_cliente   VARCHAR(150),
     telefono         VARCHAR(20),
     consideraciones  TEXT,
-    usuario_id       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+    usuario_id       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
     foto_nota        TEXT
 );
 
@@ -185,3 +192,9 @@ CREATE TABLE partidas (
     precio_unitario NUMERIC(10,2) NOT NULL DEFAULT 0,
     importe         NUMERIC(10,2) GENERATED ALWAYS AS (cantidad * precio_unitario) STORED
 );
+
+
+-- ------------------------------------------------------------
+-- SECUENCIA para folios digitales (notas creadas en el sistema)
+-- ------------------------------------------------------------
+CREATE SEQUENCE IF NOT EXISTS notas_digital_seq START 1;
