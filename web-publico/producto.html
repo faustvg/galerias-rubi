@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Producto — Muebles Rubí</title>
+  <link rel="icon" type="image/png" href="assets/logo.jpg">
+  <meta name="description" content="Muebles artesanales en madera de pino y chapa de parota. Diseño a medida con más de 30 años de tradición familiar en San Pedro Tultepec, Lerma." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #E8E2D6;
+      --text:      #4D362E;
+      --btn:       #A46447;
+      --btn-hover: #8c5038;
+      --accent1:   #87937B;
+      --accent2:   #A98F74;
+      --white:     #FAF8F5;
+      --serif:     'Cormorant Garamond', Georgia, serif;
+      --sans:      'Jost', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-weight: 300; line-height: 1.7; overflow-x: hidden; }
+    img  { display: block; width: 100%; height: 100%; object-fit: cover; }
+    a    { color: inherit; text-decoration: none; }
+
+    /* ── HEADER ── */
+    header { position: sticky; top: 0; z-index: 100; background: var(--bg); border-bottom: 1px solid rgba(77,54,46,.12); padding: 0 5vw; }
+    .header-inner { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 85px; }
+    .nav-left, .nav-right { display: flex; gap: 2.4rem; list-style: none; }
+    .nav-right { justify-content: flex-end; }
+    .nav-left a, .nav-right a { font-family: var(--sans); font-size: .8rem; font-weight: 400; letter-spacing: .14em; text-transform: uppercase; color: var(--text); transition: color .2s; position: relative; }
+    .nav-left a::after, .nav-right a::after { content: ''; position: absolute; bottom: -3px; left: 0; width: 0; height: 1px; background: var(--btn); transition: width .25s ease; }
+    .nav-left a:hover::after, .nav-right a:hover::after { width: 100%; }
+    .nav-left a:hover, .nav-right a:hover { color: var(--btn); }
+    .logo { display: flex; align-items: center; justify-content: center; }
+    .logo img { height: 100px; width: auto; max-width: 260px; object-fit: contain; }
+    .hamburger { display: none; flex-direction: column; gap: 5px; background: none; border: none; cursor: pointer; padding: 4px; }
+    .hamburger span { display: block; width: 24px; height: 1.5px; background: var(--text); transition: all .3s; }
+    .mobile-nav { display: none; flex-direction: column; gap: 0; background: var(--bg); border-top: 1px solid rgba(77,54,46,.1); padding: 1rem 5vw 1.5rem; }
+    .mobile-nav.open { display: flex; }
+    .mobile-nav a { font-size: .85rem; letter-spacing: .12em; text-transform: uppercase; padding: .65rem 0; border-bottom: 1px solid rgba(77,54,46,.08); font-weight: 400; }
+
+    /* ── BOTONES ── */
+    .btn { display: inline-block; background: var(--btn); color: var(--white); font-family: var(--sans); font-size: .78rem; font-weight: 400; letter-spacing: .18em; text-transform: uppercase; padding: .85rem 2.4rem; border: none; cursor: pointer; transition: background .2s, transform .15s; }
+    .btn:hover  { background: var(--btn-hover); transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-outline { background: transparent; color: var(--btn); border: 1px solid var(--btn); }
+    .btn-outline:hover { background: var(--btn); color: var(--white); }
+
+    /* ── HELPERS ── */
+    .section-label { font-size: .7rem; letter-spacing: .24em; text-transform: uppercase; color: var(--accent1); margin-bottom: .9rem; }
+    .section-title  { font-family: var(--serif); font-size: clamp(1.9rem, 3vw, 2.8rem); font-weight: 300; line-height: 1.2; color: var(--text); margin-bottom: 1rem; }
+    .divider { width: 40px; height: 1px; background: var(--accent2); margin: 1.4rem 0; }
+
+    /* ── ESTADOS (carga / error) ── */
+    .estado-page {
+      min-height: 55vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      padding: 4rem 5vw;
+      text-align: center;
+    }
+    .estado-page p { font-size: .92rem; color: var(--accent1); }
+    .estado-page h2 { font-family: var(--serif); font-size: 2rem; font-weight: 300; }
+
+    /* ── LAYOUT DEL PRODUCTO ── */
+    .producto-wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 4rem 5vw 6rem;
+    }
+
+    .breadcrumb {
+      font-size: .72rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--accent1);
+      margin-bottom: 2.5rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .breadcrumb a:hover { color: var(--btn); }
+    .breadcrumb .sep { opacity: .4; }
+
+    .producto-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6vw;
+      align-items: start;
+    }
+
+    /* ── GALERÍA ── */
+    .galeria-principal {
+      aspect-ratio: 1 / 1;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .galeria-principal img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: opacity .25s ease;
+    }
+    .galeria-thumbs {
+      display: flex;
+      gap: .5rem;
+      margin-top: .6rem;
+      flex-wrap: wrap;
+    }
+    .thumb {
+      width: 72px;
+      height: 72px;
+      overflow: hidden;
+      cursor: pointer;
+      border: 2px solid transparent;
+      opacity: .5;
+      transition: opacity .2s, border-color .2s;
+      flex-shrink: 0;
+    }
+    .thumb.activa { opacity: 1; border-color: var(--btn); }
+    .thumb:hover  { opacity: .8; }
+    .thumb img    { width: 100%; height: 100%; object-fit: cover; }
+
+    /* placeholder sin foto */
+    .foto-placeholder {
+      width: 100%;
+      height: 100%;
+      min-height: 320px;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent2);
+    }
+
+    /* ── INFO ── */
+    .prod-precio {
+      font-family: var(--serif);
+      font-size: 2.2rem;
+      font-weight: 300;
+      color: var(--btn);
+      margin: 1.2rem 0 1.8rem;
+    }
+
+    .prod-detalles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .9rem 2.5rem;
+      margin-bottom: 2rem;
+    }
+    .detalle-item strong {
+      display: block;
+      font-size: .68rem;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--accent1);
+      font-weight: 400;
+      margin-bottom: .2rem;
+    }
+    .detalle-item span { font-size: .9rem; }
+
+    .prod-descripcion {
+      font-size: .93rem;
+      line-height: 1.85;
+      color: var(--text);
+      opacity: .8;
+      margin-bottom: 2.5rem;
+    }
+
+    .prod-acciones {
+      display: flex;
+      flex-direction: column;
+      gap: .9rem;
+      align-items: flex-start;
+    }
+    .prod-acciones .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .6rem;
+    }
+
+    /* ── FOOTER ── */
+    footer { background: var(--accent1); color: var(--white); padding: 5rem 5vw 2rem; }
+    .footer-top { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 4rem; padding-bottom: 3.5rem; border-bottom: 1px solid rgba(255,255,255,.15); margin-bottom: 2.5rem; }
+    .footer-brand .logo-text { color: var(--white); font-size: 1.4rem; }
+    .footer-brand p { font-size: .85rem; line-height: 1.8; opacity: .75; margin: 1.2rem 0 2rem; max-width: 300px; }
+    .logo-text { font-family: var(--serif); font-size: 1.55rem; font-weight: 400; letter-spacing: .06em; }
+    .footer-cta-btn { display: inline-flex; align-items: center; gap: .7rem; background: #25D366; color: #fff; font-family: var(--sans); font-size: .78rem; font-weight: 400; letter-spacing: .1em; text-transform: uppercase; padding: .8rem 1.6rem; transition: background .2s; }
+    .footer-cta-btn:hover { background: #1ebe57; }
+    .footer-cta-btn svg { flex-shrink: 0; }
+    .footer-col h4 { font-size: .7rem; letter-spacing: .2em; text-transform: uppercase; opacity: .6; margin-bottom: 1.4rem; font-weight: 400; }
+    .footer-col ul { list-style: none; }
+    .footer-col ul li { margin-bottom: .7rem; }
+    .footer-col ul li a { font-size: .85rem; opacity: .75; transition: opacity .2s; }
+    .footer-col ul li a:hover { opacity: 1; }
+    .footer-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+    .footer-bottom p { font-size: .78rem; opacity: .55; }
+
+    /* ── WA BUBBLE ── */
+    .wa-bubble { position: fixed; bottom: 2rem; right: 2rem; z-index: 999; width: 58px; height: 58px; background: #25D366; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 18px rgba(37,211,102,.45); transition: transform .2s, box-shadow .2s; cursor: pointer; }
+    .wa-bubble:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(37,211,102,.6); }
+    .wa-bubble svg { width: 30px; height: 30px; }
+    .wa-tooltip { position: fixed; bottom: 5.8rem; right: 2rem; background: var(--text); color: var(--white); font-size: .78rem; padding: .55rem 1rem; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .2s; transform: translateY(4px); }
+    .wa-bubble:hover + .wa-tooltip { opacity: 1; transform: translateY(0); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      .producto-layout  { grid-template-columns: 1fr; }
+      .footer-top       { grid-template-columns: 1fr 1fr; }
+      .footer-brand     { grid-column: 1 / -1; }
+    }
+    @media (max-width: 640px) {
+      .nav-left, .nav-right { display: none; }
+      .hamburger { display: flex; }
+      .header-inner { display: flex; justify-content: space-between; align-items: center; height: 110px; }
+      .logo { flex: 1; justify-content: center; }
+      .logo img { height: 90px; }
+      .prod-detalles { grid-template-columns: 1fr; }
+      .footer-top  { grid-template-columns: 1fr; gap: 2.5rem; }
+      .wa-bubble   { bottom: 1.2rem; right: 1.2rem; width: 52px; height: 52px; }
+      .wa-bubble svg { width: 26px; height: 26px; }
+      .thumb { width: 58px; height: 58px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════ HEADER ══════════ -->
+<header id="site-header">
+  <div class="header-inner">
+    <ul class="nav-left">
+      <li><a href="index.html#inicio">Inicio</a></li>
+      <li><a href="index.html#coleccion">Colección</a></li>
+    </ul>
+    <div class="logo">
+      <a href="index.html">
+        <img src="assets/logo_transparente.png" alt="Muebles Rubí" />
+      </a>
+    </div>
+    <ul class="nav-right">
+      <li><a href="index.html#amedida">A Medida</a></li>
+      <li><a href="index.html#contacto">Contacto</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menú">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <nav class="mobile-nav" id="mobile-nav">
+    <a href="index.html#inicio"    onclick="closeMobileNav()">Inicio</a>
+    <a href="index.html#coleccion" onclick="closeMobileNav()">Colección</a>
+    <a href="index.html#amedida"   onclick="closeMobileNav()">A Medida</a>
+    <a href="index.html#contacto"  onclick="closeMobileNav()">Contacto</a>
+  </nav>
+</header>
+
+<!-- ══════════ ESTADO: CARGA ══════════ -->
+<div id="estado-carga" class="estado-page">
+  <p>Cargando producto…</p>
+</div>
+
+<!-- ══════════ ESTADO: ERROR / 404 ══════════ -->
+<div id="estado-error" class="estado-page" style="display:none">
+  <h2>Producto no encontrado</h2>
+  <p>Es posible que este mueble ya no esté disponible o el enlace sea incorrecto.</p>
+  <a href="index.html#coleccion" class="btn" style="margin-top:.5rem;">Ver catálogo completo</a>
+</div>
+
+<!-- ══════════ DETALLE DEL PRODUCTO ══════════ -->
+<div id="producto-detalle" style="display:none">
+  <div class="producto-wrap">
+
+    <!-- Migas de pan -->
+    <div class="breadcrumb">
+      <a href="index.html">Inicio</a>
+      <span class="sep">›</span>
+      <a href="index.html#coleccion">Colección</a>
+      <span class="sep">›</span>
+      <span id="bc-nombre" style="color:var(--text);opacity:.7;"></span>
+    </div>
+
+    <div class="producto-layout">
+
+      <!-- Galería -->
+      <div>
+        <div class="galeria-principal" id="galeria-principal">
+          <!-- imagen principal — llenada por JS -->
+        </div>
+        <div class="galeria-thumbs" id="galeria-thumbs">
+          <!-- miniaturas — llenadas por JS si hay más de 1 foto -->
+        </div>
+      </div>
+
+      <!-- Información -->
+      <div class="producto-info">
+        <p class="section-label" id="prod-categoria" style="display:none"></p>
+        <h1 class="section-title" id="prod-nombre"></h1>
+        <div class="divider"></div>
+
+        <p class="prod-precio" id="prod-precio" style="display:none"></p>
+
+        <div class="prod-detalles" id="prod-detalles" style="display:none"></div>
+
+        <p class="prod-descripcion" id="prod-descripcion" style="display:none"></p>
+
+        <div class="prod-acciones">
+          <a id="btn-wa" href="#" class="btn" target="_blank" rel="noopener">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+              <path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/>
+            </svg>
+            Preguntar por este mueble
+          </a>
+          <a href="index.html#coleccion" class="btn btn-outline">← Ver más muebles</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ FOOTER ══════════ -->
+<footer>
+  <div class="footer-top">
+    <div class="footer-brand">
+      <div class="logo-text">Muebles Rubí</div>
+      <p>Artesanos de la madera desde hace más de 30 años. Piezas únicas de pino y parota, hechas a mano en San Pedro Tultepec, Lerma.</p>
+      <a href="https://wa.me/5217225723939" class="footer-cta-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
+        ¿Tienes una idea? Hablemos
+      </a>
+    </div>
+
+    <div class="footer-col">
+      <h4>Navegación</h4>
+      <ul>
+        <li><a href="index.html#inicio">Inicio</a></li>
+        <li><a href="index.html#destacados">Destacados</a></li>
+        <li><a href="index.html#coleccion">Colección</a></li>
+        <li><a href="index.html#amedida">A Medida</a></li>
+        <li><a href="index.html#contacto">Contacto</a></li>
+      </ul>
+    </div>
+
+    <div class="footer-col">
+      <h4>Categorías</h4>
+      <ul>
+        <li><a href="index.html#coleccion">Salas</a></li>
+        <li><a href="index.html#coleccion">Comedores</a></li>
+        <li><a href="index.html#coleccion">Roperos</a></li>
+        <li><a href="index.html#coleccion">Sillones</a></li>
+        <li><a href="index.html#coleccion">Sofá Camas</a></li>
+        <li><a href="index.html#coleccion">Muebles Pantalla</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer-bottom">
+    <p>© 2025 Muebles Rubí — San Pedro Tultepec, Lerma, Estado de México</p>
+    <p>Hecho con ♥ por la familia</p>
+  </div>
+</footer>
+
+<!-- ══════════ WHATSAPP BUBBLE ══════════ -->
+<a href="https://wa.me/5217225723939" class="wa-bubble" aria-label="Contactar por WhatsApp" target="_blank" rel="noopener">
+  <svg viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
+</a>
+<div class="wa-tooltip">¡Escríbenos ahora!</div>
+
+<script>
+  /* ─────────────────────────────────────────────────────────────
+     CONFIGURACIÓN — un solo lugar para cambiar en producción
+     ───────────────────────────────────────────────────────────── */
+  const API_BASE  = ''               // Producción: 'https://api.galerias-rubi.com'
+  const WA_NUMBER = '5217225723939'
+
+  function fotoUrl(ruta) {
+    if (!ruta) return null
+    if (ruta.startsWith('http')) return ruta
+    return `${API_BASE}/uploads/${ruta}`
+  }
+
+  function formatPrecio(valor) {
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency', currency: 'MXN',
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(valor)
+  }
+
+  let fotosActuales = []
+  let indiceActivo  = 0
+
+  function cambiarFoto(indice) {
+    indiceActivo = indice
+    const img = document.getElementById('foto-principal-img')
+    if (!img) return
+    img.style.opacity = '0'
+    setTimeout(() => {
+      img.src = fotoUrl(fotosActuales[indice])
+      img.style.opacity = '1'
+    }, 150)
+    document.querySelectorAll('.thumb').forEach((t, i) => {
+      t.classList.toggle('activa', i === indice)
+    })
+  }
+
+  function renderProducto(p) {
+    document.title = `${p.nombre} — Muebles Rubí`
+
+    // Breadcrumb
+    document.getElementById('bc-nombre').textContent = p.nombre
+
+    // Categoría
+    if (p.categoria) {
+      const el = document.getElementById('prod-categoria')
+      el.textContent = p.categoria
+      el.style.display = ''
+    }
+
+    // Nombre
+    document.getElementById('prod-nombre').textContent = p.nombre
+
+    // Precio
+    if (p.precio_efectivo > 0) {
+      const el = document.getElementById('prod-precio')
+      el.textContent = formatPrecio(p.precio_efectivo)
+      el.style.display = ''
+    }
+
+    // Detalles (material, color)
+    const detalles = []
+    if (p.material) detalles.push({ label: 'Material', valor: p.material })
+    if (p.color)    detalles.push({ label: 'Acabado',  valor: p.color   })
+    if (detalles.length) {
+      const el = document.getElementById('prod-detalles')
+      el.innerHTML = detalles.map(d =>
+        `<div class="detalle-item"><strong>${d.label}</strong><span>${d.valor}</span></div>`
+      ).join('')
+      el.style.display = ''
+    }
+
+    // Descripción
+    if (p.descripcion) {
+      const el = document.getElementById('prod-descripcion')
+      el.textContent = p.descripcion
+      el.style.display = ''
+    }
+
+    // WhatsApp — mensaje con nombre del producto
+    const msg = encodeURIComponent(
+      `Hola, me interesa el mueble: *${p.nombre}*. ¿Podrían darme más información y el precio actual?`
+    )
+    document.getElementById('btn-wa').href = `https://wa.me/${WA_NUMBER}?text=${msg}`
+
+    // Galería
+    fotosActuales = (p.fotos || []).filter(r => fotoUrl(r))
+    const galPrincipal = document.getElementById('galeria-principal')
+    const galThumbs    = document.getElementById('galeria-thumbs')
+
+    if (fotosActuales.length > 0) {
+      galPrincipal.innerHTML = `<img id="foto-principal-img" src="${fotoUrl(fotosActuales[0])}" alt="${p.nombre}" />`
+      if (fotosActuales.length > 1) {
+        galThumbs.innerHTML = fotosActuales.map((foto, i) =>
+          `<div class="thumb${i === 0 ? ' activa' : ''}" onclick="cambiarFoto(${i})">
+             <img src="${fotoUrl(foto)}" alt="${p.nombre} foto ${i + 1}" loading="lazy" />
+           </div>`
+        ).join('')
+      }
+    } else {
+      galPrincipal.innerHTML = `
+        <div class="foto-placeholder">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <rect x="4" y="10" width="40" height="28" rx="2" stroke="currentColor" stroke-width="1.5" opacity=".3"/>
+            <circle cx="16" cy="22" r="4" stroke="currentColor" stroke-width="1.5" opacity=".3"/>
+            <path d="M4 34 L14 24 L24 30 L32 22 L44 34" stroke="currentColor" stroke-width="1.5" fill="none" opacity=".3"/>
+          </svg>
+        </div>`
+    }
+
+    // Mostrar contenido, ocultar carga
+    document.getElementById('estado-carga').style.display   = 'none'
+    document.getElementById('producto-detalle').style.display = ''
+  }
+
+  function mostrarError() {
+    document.getElementById('estado-carga').style.display  = 'none'
+    document.getElementById('estado-error').style.display  = ''
+  }
+
+  async function cargar() {
+    const params = new URLSearchParams(location.search)
+    const id     = params.get('id')
+    if (!id || isNaN(Number(id))) { mostrarError(); return }
+
+    try {
+      const res = await fetch(`${API_BASE}/publico/productos/${id}`)
+      if (!res.ok) { mostrarError(); return }
+      renderProducto(await res.json())
+    } catch {
+      mostrarError()
+    }
+  }
+
+  /* ── sombra header al hacer scroll ── */
+  const header = document.getElementById('site-header')
+  window.addEventListener('scroll', () => {
+    header.style.boxShadow = window.scrollY > 10
+      ? '0 2px 20px rgba(77,54,46,.1)'
+      : 'none'
+  })
+
+  /* ── menú móvil ── */
+  document.getElementById('hamburger').addEventListener('click', () => {
+    document.getElementById('mobile-nav').classList.toggle('open')
+  })
+  function closeMobileNav() {
+    document.getElementById('mobile-nav').classList.remove('open')
+  }
+
+  cargar()
+</script>
+</body>
+</html>

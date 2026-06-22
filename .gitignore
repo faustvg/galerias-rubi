@@ -19,3 +19,7 @@ Thumbs.db
 # Database dumps (can be large / may contain real client data)
 *.dump
 *.backup
+
+# Uploaded product photos — generated at runtime, NOT in git.
+# In production, nginx serves this folder directly (bypassing FastAPI).
+uploads/

@@ -1,0 +1,6 @@
+/* Estas tres líneas le dicen a PostCSS/Tailwind que inyecte aquí
+   los estilos base, las utilidades, y los componentes de Tailwind.
+   Sin ellas, las clases como "flex", "text-sm", etc. no existirían. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

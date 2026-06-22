@@ -830,6 +830,20 @@
     @media (max-width: 380px) {
       .catalog-grid { grid-template-columns: 1fr; }
     }
+
+    /* catalog-card es ahora un <a> — necesita display:block para tomar el ancho completo */
+    a.catalog-card { display: block; }
+
+    /* placeholder cuando el producto no tiene foto */
+    .foto-placeholder {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent2);
+    }
   </style>
 </head>
 <body>
@@ -948,15 +962,8 @@
     <p class="section-sub">Piezas listas para llevar a tu hogar o como punto de partida para un diseño completamente personalizado.</p>
   </div>
 
-  <div class="coleccion-tabs">
-    <button class="tab-btn active" onclick="filterCatalog('todos', this)">Todos</button>
-    <button class="tab-btn" onclick="filterCatalog('salas', this)">Salas</button>
-    <button class="tab-btn" onclick="filterCatalog('comedores', this)">Comedores</button>
-    <button class="tab-btn" onclick="filterCatalog('roperos', this)">Roperos</button>
-    <button class="tab-btn" onclick="filterCatalog('sillones', this)">Sillones</button>
-    <button class="tab-btn" onclick="filterCatalog('sofa-camas', this)">Sofá Camas</button>
-    <button class="tab-btn" onclick="filterCatalog('centros', this)">Centros de Mesa</button>
-    <button class="tab-btn" onclick="filterCatalog('pantallas', this)">Muebles Pantalla</button>
+  <div class="coleccion-tabs" id="coleccion-tabs">
+    <!-- Categorías cargadas dinámicamente desde /publico/categorias -->
   </div>
 
   <div class="catalog-grid" id="catalog-grid">
@@ -1064,7 +1071,7 @@
       <div>
         <strong>WhatsApp</strong>
         <!-- REPLACE with your real number -->
-        <span><a href="https://wa.me/527XXXXXXXXX" style="color:var(--btn);">+52 722 572 3939</a></span>
+        <span><a href="https://wa.me/5217225723939" style="color:var(--btn);">+52 722 572 3939</a></span>
       </div>
     </div>
 
@@ -1078,7 +1085,7 @@
       </div>
     </div>
 
-    <a href="https://wa.me/527XXXXXXXXX" class="btn" style="margin-top:1rem;display:inline-flex;align-items:center;gap:.6rem;">
+    <a href="https://wa.me/5217225723939" class="btn" style="margin-top:1rem;display:inline-flex;align-items:center;gap:.6rem;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
       Escríbenos ahora
     </a>
@@ -1126,7 +1133,7 @@
       <div class="logo-text">Muebles Rubí</div>
       <p>Artesanos de la madera desde hace más de 30 años. Piezas únicas de pino y parota, hechas a mano en San Pedro Tultepec, Lerma.</p>
       <!-- REPLACE with your real number -->
-      <a href="https://wa.me/527XXXXXXXXX" class="footer-cta-btn">
+      <a href="https://wa.me/5217225723939" class="footer-cta-btn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
         ¿Tienes una idea? Hablemos
       </a>
@@ -1164,88 +1171,142 @@
 
 <!-- ══════════ WHATSAPP BUBBLE ══════════ -->
 <!-- REPLACE with your real number -->
-<a href="https://wa.me/527XXXXXXXXX" class="wa-bubble" aria-label="Contactar por WhatsApp" target="_blank" rel="noopener">
+<a href="https://wa.me/5217225723939" class="wa-bubble" aria-label="Contactar por WhatsApp" target="_blank" rel="noopener">
   <svg viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
 </a>
 <div class="wa-tooltip">¡Escríbenos ahora!</div>
 
 <script>
-  /* ── CATALOG DATA ── */
-  const products = [
-    { id:1, cat:'salas',      name:'Sala Nogal 3+2',        sub:'Pino macizo · 5 piezas',    img:'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&q=75' },
-    { id:2, cat:'salas',      name:'Sala Colonial',          sub:'Pino macizo · 3 piezas',    img:'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=600&q=75' },
-    { id:3, cat:'comedores',  name:'Comedor Parota 6 sillas',sub:'Parota · 7 piezas',         img:'https://images.unsplash.com/photo-1604578762246-41134e37f9cc?w=600&q=75' },
-    { id:4, cat:'comedores',  name:'Comedor Rústico 8 sillas',sub:'Parota · 9 piezas',        img:'https://images.unsplash.com/photo-1615874959474-d609969a20ed?w=600&q=75' },
-    { id:5, cat:'roperos',    name:'Ropero Tallado 4 puertas',sub:'Pino macizo · 4 puertas',  img:'https://images.unsplash.com/photo-1616627577385-322c6671d5dd?w=600&q=75' },
-    { id:6, cat:'roperos',    name:'Ropero Minimalista',     sub:'Pino · 2 puertas corredizas',img:'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=75' },
-    { id:7, cat:'sillones',   name:'Sillón Ejecutivo',       sub:'Pino · Tapizado premium',   img:'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=600&q=75' },
-    { id:8, cat:'sillones',   name:'Sillón Orejero',         sub:'Pino · Tela texturizada',   img:'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=600&q=75' },
-    { id:9, cat:'sofa-camas', name:'Sofá Cama Colonial',     sub:'Pino macizo · Matrimonial', img:'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&q=75' },
-    { id:10,cat:'centros',    name:'Centro de Mesa Parota',  sub:'Parota natural · 120×60cm', img:'https://images.unsplash.com/photo-1565183997392-2f6f122e5912?w=600&q=75' },
-    { id:11,cat:'centros',    name:'Centro Minimalista',     sub:'Pino · 100×50cm',           img:'https://images.unsplash.com/photo-1540574163026-643ea20ade25?w=600&q=75' },
-    { id:12,cat:'pantallas',  name:'Mueble Pantalla 65"',    sub:'Pino macizo · Con cajones', img:'https://images.unsplash.com/photo-1593359677879-a4bb92f4834b?w=600&q=75' },
-    { id:13,cat:'salas',      name:'Sala Campestre',         sub:'Pino · 4 piezas',           img:'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=600&q=75' },
-    { id:14,cat:'pantallas',  name:'Rack TV Flotante',       sub:'Pino · Para muros',         img:'https://images.unsplash.com/photo-1600121848594-d8644e57abab?w=600&q=75' },
-    { id:15,cat:'comedores',  name:'Comedor Industrial 4 p.',sub:'Parota y metal · 5 piezas', img:'https://images.unsplash.com/photo-1617806118233-18e1de247200?w=600&q=75' },
-  ];
+  /* ─────────────────────────────────────────────────────────────
+     CONFIGURACIÓN — un solo lugar para cambiar en producción
+     ───────────────────────────────────────────────────────────── */
+  const API_BASE  = ''               // Producción: 'https://api.galerias-rubi.com'
+  const WA_NUMBER = '5217225723939'
 
-  function renderCatalog(filter) {
-    const grid = document.getElementById('catalog-grid');
-    const items = filter === 'todos' ? products : products.filter(p => p.cat === filter);
-    grid.innerHTML = items.map(p => `
-      <div class="catalog-card" onclick="openWhatsApp('${p.name}')">
-        <div class="catalog-card-img">
-          <img src="${p.img}" alt="${p.name}" loading="lazy" />
-        </div>
-        <h3>${p.name}</h3>
-        <p class="card-sub">${p.sub}</p>
-        <span class="ver-mas">Ver detalles →</span>
-      </div>
-    `).join('');
+  /* ── helpers ── */
+  let allProducts = []
+
+  function fotoUrl(ruta) {
+    if (!ruta) return null
+    if (ruta.startsWith('http')) return ruta
+    return `${API_BASE}/uploads/${ruta}`
   }
 
-  function filterCatalog(cat, btn) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    renderCatalog(cat);
+  function esc(texto) {
+    return String(texto)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   }
 
-  renderCatalog('todos');
-
-  /* ── WHATSAPP ── */
-  // REPLACE 527XXXXXXXXX with real number (country code + number, no + or spaces)
-  const WA_NUMBER = '527XXXXXXXXX';
-
-  function openWhatsApp(product) {
-    const msg = encodeURIComponent(`Hola, me interesa el mueble: *${product}*. ¿Podrían darme más información?`);
-    window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank');
+  /* ── tabs de categorías (renderizadas desde la API) ── */
+  function renderTabs(categorias) {
+    const container = document.getElementById('coleccion-tabs')
+    let html = '<button class="tab-btn active" data-filtro="">Todos</button>'
+    for (const cat of categorias) {
+      html += `<button class="tab-btn" data-filtro="${cat.id}">${esc(cat.nombre)}</button>`
+    }
+    container.innerHTML = html
+    container.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const val = btn.dataset.filtro
+        filterCatalog(val === '' ? null : Number(val), btn)
+      })
+    })
   }
 
-  /* ── FORM ── */
+  /* ── cuadrícula de productos ── */
+  function renderCatalog(filtro) {
+    const grid  = document.getElementById('catalog-grid')
+    const items = filtro === null
+      ? allProducts
+      : allProducts.filter(p => p.categoria_id === filtro)
+
+    if (items.length === 0) {
+      grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--accent1);padding:2rem 0;">Sin productos en esta categoría.</p>'
+      return
+    }
+
+    grid.innerHTML = items.map(p => {
+      const src = fotoUrl(p.fotos?.[0])
+      const img = src
+        ? `<img src="${src}" alt="${esc(p.nombre)}" loading="lazy" />`
+        : `<div class="foto-placeholder" aria-hidden="true">
+             <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+               <rect x="4" y="10" width="40" height="28" rx="2" stroke="currentColor" stroke-width="1.5" opacity=".3"/>
+               <circle cx="16" cy="22" r="4" stroke="currentColor" stroke-width="1.5" opacity=".3"/>
+               <path d="M4 34 L14 24 L24 30 L32 22 L44 34" stroke="currentColor" stroke-width="1.5" fill="none" opacity=".3"/>
+             </svg>
+           </div>`
+      const sub = [p.categoria, p.material, p.color].filter(Boolean).map(esc).join(' · ')
+      return `
+        <a class="catalog-card" href="producto.html?id=${p.id}">
+          <div class="catalog-card-img">${img}</div>
+          <h3>${esc(p.nombre)}</h3>
+          ${sub ? `<p class="card-sub">${sub}</p>` : ''}
+          <span class="ver-mas">Ver detalles →</span>
+        </a>`
+    }).join('')
+  }
+
+  function filterCatalog(filtro, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    renderCatalog(filtro)
+  }
+
+  /* ── carga inicial desde la API ── */
+  async function cargarCatalogo() {
+    const grid = document.getElementById('catalog-grid')
+    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--accent1);padding:3rem 0;font-size:.85rem;letter-spacing:.06em;">Cargando colección…</p>'
+
+    try {
+      const [resCats, resProds] = await Promise.all([
+        fetch(`${API_BASE}/publico/categorias`),
+        fetch(`${API_BASE}/publico/productos`),
+      ])
+      if (!resCats.ok || !resProds.ok) throw new Error()
+      const [categorias, productos] = await Promise.all([resCats.json(), resProds.json()])
+      allProducts = productos
+      renderTabs(categorias)
+      renderCatalog(null)
+    } catch {
+      grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--accent1);padding:3rem 0;font-size:.85rem;">No se pudo cargar el catálogo. Por favor intenta más tarde.</p>'
+    }
+  }
+
+  /* ── WhatsApp (usado por el formulario de contacto) ── */
+  function openWhatsApp(nombre) {
+    const msg = encodeURIComponent(`Hola, me interesa el mueble: *${nombre}*. ¿Podrían darme más información?`)
+    window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank')
+  }
+
+  /* ── formulario de contacto ── */
   function handleFormSubmit(e) {
-    e.preventDefault();
-    const nombre  = document.getElementById('nombre').value;
-    const tipo    = document.getElementById('tipo').value;
-    const mensaje = document.getElementById('mensaje').value;
-    const text    = encodeURIComponent(`Hola, soy *${nombre}*.\nMe interesa: ${tipo}.\n\n${mensaje}`);
-    window.open(`https://wa.me/${WA_NUMBER}?text=${text}`, '_blank');
+    e.preventDefault()
+    const nombre  = document.getElementById('nombre').value
+    const tipo    = document.getElementById('tipo').value
+    const mensaje = document.getElementById('mensaje').value
+    const text    = encodeURIComponent(`Hola, soy *${nombre}*.\nMe interesa: ${tipo}.\n\n${mensaje}`)
+    window.open(`https://wa.me/${WA_NUMBER}?text=${text}`, '_blank')
   }
 
-  /* ── MOBILE NAV ── */
+  /* ── menú móvil ── */
   document.getElementById('hamburger').addEventListener('click', () => {
-    document.getElementById('mobile-nav').classList.toggle('open');
-  });
+    document.getElementById('mobile-nav').classList.toggle('open')
+  })
   function closeMobileNav() {
-    document.getElementById('mobile-nav').classList.remove('open');
+    document.getElementById('mobile-nav').classList.remove('open')
   }
 
-  /* ── HEADER SCROLL SHADOW ── */
-  const header = document.getElementById('site-header');
+  /* ── sombra del header al hacer scroll ── */
+  const header = document.getElementById('site-header')
   window.addEventListener('scroll', () => {
     header.style.boxShadow = window.scrollY > 10
       ? '0 2px 20px rgba(77,54,46,.1)'
-      : 'none';
-  });
+      : 'none'
+  })
+
+  cargarCatalogo()
 </script>
 </body>
 </html>
