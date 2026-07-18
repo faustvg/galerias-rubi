@@ -5,6 +5,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
 
+  // Base path de producción: el panel se sirve desde /admin en nginx.
+  // Sin esto, los assets compilados (JS/CSS) apuntarían a la raíz y
+  // la página saldría en blanco al acceder desde /admin.
+  base: '/admin/',
+
   server: {
     // El proxy reescribe las URLs en desarrollo:
     //   fetch('/api/login')  →  http://localhost:8000/login

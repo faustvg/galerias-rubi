@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated, Optional
 
 import psycopg.errors
@@ -56,6 +57,7 @@ class ProductoCreate(BaseModel):
     descuento_pct: Optional[Annotated[float, Field(ge=0, le=100)]] = None
     fotos: list[str] = []
     ubicaciones: list[str] = []
+    fecha_ingreso: Optional[date] = None   # si no se manda, el endpoint usa hoy
 
 
 class ProductoUpdate(BaseModel):
@@ -72,6 +74,7 @@ class ProductoUpdate(BaseModel):
     descuento_pct: Optional[Annotated[float, Field(ge=0, le=100)]] = None
     fotos: Optional[list[str]] = None
     ubicaciones: Optional[list[str]] = None
+    fecha_ingreso: Optional[date] = None   # PUT parcial: no se fuerza ningún default
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +98,7 @@ class AdminProducto(BaseModel):
     existencias: int
     visible_en_sitio: bool
     ubicaciones: list[str] = []
+    fecha_ingreso: Optional[date] = None
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +220,8 @@ async def crear_producto(
     _usuario: UsuarioActual = requiere_roles(*ROLES_ESCRITURA),
     conn=Depends(get_db),
 ):
+    fecha_ingreso = data.fecha_ingreso or date.today()
+
     try:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -223,8 +229,9 @@ async def crear_producto(
                 INSERT INTO productos
                     (nombre, categoria_id, proveedor_id, color, material,
                      descripcion, precio_base, costo, existencias,
-                     visible_en_sitio, descuento_pct, fotos, ubicaciones)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     visible_en_sitio, descuento_pct, fotos, ubicaciones,
+                     fecha_ingreso)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -232,7 +239,7 @@ async def crear_producto(
                     data.color, data.material, data.descripcion,
                     data.precio_base, data.costo, data.existencias,
                     data.visible_en_sitio, data.descuento_pct, data.fotos,
-                    data.ubicaciones,
+                    data.ubicaciones, fecha_ingreso,
                 ),
             )
             row = await cur.fetchone()
@@ -296,7 +303,8 @@ async def listar_todos_productos(
                 p.descuento_pct, p.fotos, p.color, p.material,
                 p.categoria_id, c.nombre AS categoria,
                 p.proveedor_id, prov.proveedor,
-                p.existencias, p.visible_en_sitio, p.ubicaciones
+                p.existencias, p.visible_en_sitio, p.ubicaciones,
+                p.fecha_ingreso
             FROM productos p
             LEFT JOIN categorias c    ON c.id   = p.categoria_id
             LEFT JOIN proveedores prov ON prov.id = p.proveedor_id
@@ -316,6 +324,7 @@ async def listar_todos_productos(
             "proveedor_id": r[11], "proveedor": r[12],
             "existencias": r[13] or 0, "visible_en_sitio": r[14],
             "ubicaciones": r[15] or [],
+            "fecha_ingreso": r[16],
         }
         for r in rows
     ]

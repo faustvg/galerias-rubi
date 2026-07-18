@@ -254,13 +254,14 @@ async def utilidad(
             await cur.execute(
                 """
                 SELECT
-                    COALESCE(n.vendedor, 'Sin asignar') AS nombre,
+                    COALESCE(uv.nombre, n.vendedor, 'Sin asignar') AS nombre,
                     COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
                 FROM partidas par
                 JOIN notas n ON n.folio = par.folio_pedido
                 JOIN productos prod ON prod.id = par.producto_id
+                LEFT JOIN usuarios uv ON uv.id = n.vendedor_id
                 WHERE n.estatus != 'Cancelado'
-                GROUP BY n.vendedor
+                GROUP BY 1
                 ORDER BY utilidad DESC
                 """
             )
@@ -509,14 +510,15 @@ async def historico_utilidad(
             await cur.execute(
                 """
                 SELECT
-                    COALESCE(n.vendedor, 'Sin asignar') AS nombre,
+                    COALESCE(uv.nombre, n.vendedor, 'Sin asignar') AS nombre,
                     COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
                 FROM partidas par
                 JOIN notas n ON n.folio = par.folio_pedido
                 JOIN productos prod ON prod.id = par.producto_id
+                LEFT JOIN usuarios uv ON uv.id = n.vendedor_id
                 WHERE n.estatus != 'Cancelado'
                   AND n.fecha_pedido BETWEEN %s AND %s
-                GROUP BY n.vendedor ORDER BY utilidad DESC
+                GROUP BY 1 ORDER BY utilidad DESC
                 """,
                 (fecha_desde, fecha_hasta),
             )

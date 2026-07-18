@@ -42,6 +42,17 @@ DB_NAME=
 DB_USER=
 DB_PASSWORD=
 SECRET_KEY=        # generate with: python -c "import secrets; print(secrets.token_hex(32))"
+
+# Optional — enables the "send nota by email" button in the admin panel.
+# SMTP_USER/SMTP_PASSWORD are for a Gmail account (mueblesrubimx@gmail.com).
+# SMTP_PASSWORD must be a 16-char Gmail "App Password" (Google Account →
+# Security → 2-Step Verification → App Passwords), NOT the account's login
+# password — Gmail's SMTP rejects plain login passwords.
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=
+SMTP_PASSWORD=
+NOTA_EMAIL_DESTINO=mueblesrubimx@gmail.com
 ```
 
 ### Create an admin user

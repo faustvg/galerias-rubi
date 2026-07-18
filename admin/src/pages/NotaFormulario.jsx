@@ -70,7 +70,7 @@ const CABECERA_INICIAL = {
   telefono: '',
   fecha_pedido: hoy(),
   fecha_entrega: '',
-  vendedor: '',
+  vendedor_id: '',
   total: '',
   anticipo: '',
   estatus: 'Presupuesto',
@@ -127,6 +127,12 @@ export default function NotaFormulario() {
   // no espera al guardado del formulario porque el endpoint es independiente.
   const [fotoNota, setFotoNota] = useState(null)
 
+  // Nombre a mostrar cuando el vendedor de la nota ya no aparece en la lista
+  // de vendedores activos (empleado desactivado o dato histórico). Viene del
+  // campo `vendedor` (nombre resuelto en vivo o texto histórico) que ya
+  // devuelve el backend junto con `vendedor_id`.
+  const [vendedorHistorico, setVendedorHistorico] = useState('')
+
   // ── Valor derivado: resta se calcula en tiempo real ──────────────────────
   // No necesita un useState — es una función pura de cabecera.total y .anticipo.
   // Se recalcula en cada teclazo sin delay.
@@ -163,13 +169,11 @@ export default function NotaFormulario() {
 
           const nota = await resN.json()
 
-          // Normalizar vendedor: si se guardó como ID numérico (datos históricos),
-          // convertir al nombre para que el select lo pre-seleccione correctamente.
-          let vendedorTexto = nota.vendedor || ''
-          if (vendedorTexto && /^\d+$/.test(vendedorTexto)) {
-            const match = dataV.find(v => String(v.id) === vendedorTexto)
-            if (match) vendedorTexto = match.nombre
-          }
+          // Guardar el nombre a mostrar por si vendedor_id no está en la lista
+          // de vendedores activos (empleado desactivado, o nota vieja sin
+          // cuenta de sistema asociada) — el select lo muestra como opción
+          // extra de solo-lectura.
+          setVendedorHistorico(nota.vendedor || '')
 
           // Normalizar foto_nota: descartar valores placeholder que no son rutas reales
           // (p.ej. el string literal "string" que Swagger usa como ejemplo).
@@ -183,7 +187,7 @@ export default function NotaFormulario() {
             telefono:        nota.telefono        || '',
             fecha_pedido:    nota.fecha_pedido    || hoy(),
             fecha_entrega:   nota.fecha_entrega   || '',
-            vendedor:        vendedorTexto,
+            vendedor_id:     nota.vendedor_id != null ? String(nota.vendedor_id) : '',
             total:           nota.total    != null ? String(nota.total)    : '',
             anticipo:        nota.anticipo != null ? String(nota.anticipo) : '',
             estatus:         nota.estatus,
@@ -268,7 +272,7 @@ export default function NotaFormulario() {
       telefono:        cabecera.telefono.trim()       || null,
       fecha_pedido:    cabecera.fecha_pedido          || hoy(),
       fecha_entrega:   cabecera.fecha_entrega         || null,
-      vendedor:        cabecera.vendedor.trim()       || null,
+      vendedor_id:     cabecera.vendedor_id ? Number(cabecera.vendedor_id) : null,
       total:           Math.max(0, Number(cabecera.total)    || 0),
       anticipo:        Math.max(0, Number(cabecera.anticipo) || 0),
       estatus:         cabecera.estatus,
@@ -404,25 +408,28 @@ export default function NotaFormulario() {
               </Campo>
               <Campo label="Vendedor">
                 {/*
-                  El select usa el nombre del trabajador como value (no el id).
-                  La nota guarda el nombre en texto libre, no un FK.
-                  Si el vendedor actual no coincide con ningún trabajador activo
-                  (cambio de personal, empleado desactivado, dato histórico),
-                  aparece como opción seleccionada al final de la lista.
+                  El select usa el ID del trabajador como value (vendedor_id,
+                  un FK real a usuarios). Así, si el vendedor cambia su nombre
+                  después en Usuarios, esta nota (y su PDF, lista, dashboards)
+                  siempre muestran el nombre ACTUAL — no una copia congelada.
+                  Si el vendedor_id ya no aparece en la lista de activos
+                  (empleado desactivado, dato histórico), se agrega como
+                  opción extra al final usando el nombre que ya resolvió el
+                  backend (vendedorHistorico).
                 */}
                 <select
-                  value={cabecera.vendedor}
-                  onChange={e => handleCampo('vendedor', e.target.value)}
+                  value={cabecera.vendedor_id}
+                  onChange={e => handleCampo('vendedor_id', e.target.value)}
                   className={estiloInput}
                 >
                   <option value="">— Sin vendedor —</option>
                   {vendedores.map(v => (
-                    <option key={v.id} value={v.nombre}>{v.nombre}</option>
+                    <option key={v.id} value={v.id}>{v.nombre}</option>
                   ))}
-                  {cabecera.vendedor &&
-                   !vendedores.some(v => v.nombre === cabecera.vendedor) && (
-                    <option value={cabecera.vendedor}>
-                      {cabecera.vendedor} (ya no está en el sistema)
+                  {cabecera.vendedor_id &&
+                   !vendedores.some(v => String(v.id) === String(cabecera.vendedor_id)) && (
+                    <option value={cabecera.vendedor_id}>
+                      {vendedorHistorico} (ya no está en el sistema)
                     </option>
                   )}
                 </select>
@@ -480,6 +487,22 @@ export default function NotaFormulario() {
                 </div>
               </div>
             </div>
+          </Seccion>
+
+          {/* ── 3b. Pagos — cómo se cobró (efectivo/tarjeta/transferencia) ──
+              A diferencia de las partidas, los pagos son un sub-recurso propio
+              en el backend (POST/GET/DELETE /notas/{folio}/pagos), no parte
+              del payload de la nota — se guardan de inmediato, igual que la
+              foto de la nota de papel. Por eso solo aparecen en modo edición:
+              necesitan un folio ya existente. */}
+          <Seccion titulo="Pagos">
+            {modoEdicion ? (
+              <PagosEditor folio={folio} />
+            ) : (
+              <p className="text-xs text-gray-400">
+                Podrás registrar los pagos (efectivo, tarjeta, transferencia) después de crear el pedido.
+              </p>
+            )}
           </Seccion>
 
           {/* ── 4. Muebles (partidas) ── */}
@@ -708,6 +731,163 @@ function FilaPartida({ partida, numero, productos, onSeleccionarProducto, onChan
         </div>
       </div>
 
+    </div>
+  )
+}
+
+
+// ── PagosEditor ───────────────────────────────────────────────────────────────
+// Registro de pagos (efectivo/tarjeta/transferencia) de una nota ya existente.
+// Igual que FotoNotaEditor: cada acción (agregar, eliminar) se guarda de
+// inmediato contra el backend, no espera al botón "Guardar cambios" del
+// formulario principal — porque pagos es un sub-recurso independiente, no
+// parte del payload de la nota.
+// Un pago DIVIDIDO (parte efectivo, parte tarjeta) es simplemente agregar
+// dos filas seguidas con el mismo folio.
+
+const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia']
+const TIPOS_PAGO   = ['anticipo', 'liquidacion', 'abono']
+
+function PagosEditor({ folio }) {
+  const [pagos,     setPagos]     = useState([])
+  const [cargando,  setCargando]  = useState(true)
+  const [error,     setError]     = useState(null)
+  const [guardando, setGuardando] = useState(false)
+
+  // Formulario de "agregar pago" — se reinicia después de cada guardado exitoso
+  const [metodo, setMetodo] = useState('efectivo')
+  const [tipo,   setTipo]   = useState('')
+  const [monto,  setMonto]  = useState('')
+
+  async function cargarPagos() {
+    setCargando(true)
+    setError(null)
+    try {
+      const res = await apiFetch(`/notas/${folio}/pagos`)
+      if (!res.ok) throw new Error('No se pudieron cargar los pagos.')
+      setPagos(await res.json())
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  useEffect(() => { cargarPagos() }, [folio])
+
+  async function handleAgregar() {
+    const montoNum = Number(monto)
+    if (!montoNum || montoNum <= 0) return
+
+    setGuardando(true)
+    setError(null)
+    try {
+      const res = await apiFetch(`/notas/${folio}/pagos`, {
+        method: 'POST',
+        body: JSON.stringify({ metodo, tipo: tipo || null, monto: montoNum }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || 'No se pudo registrar el pago.')
+      }
+      setMonto('')
+      setTipo('')
+      await cargarPagos()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function handleEliminar(id) {
+    setError(null)
+    try {
+      const res = await apiFetch(`/notas/${folio}/pagos/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('No se pudo eliminar el pago.')
+      setPagos(prev => prev.filter(p => p.id !== id))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const totalRegistrado = pagos.reduce((acc, p) => acc + Number(p.monto), 0)
+
+  return (
+    <div className="space-y-3">
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      {cargando ? (
+        <p className="text-xs text-gray-400">Cargando pagos…</p>
+      ) : pagos.length === 0 ? (
+        <p className="text-xs text-gray-400">Todavía no hay pagos registrados.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {pagos.map(p => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between text-sm bg-gray-50
+                         rounded-lg px-3 py-2"
+            >
+              <div className="min-w-0">
+                <span className="font-medium text-gray-800 capitalize">{p.metodo}</span>
+                {p.tipo && <span className="text-gray-400"> · {p.tipo}</span>}
+                <span className="text-gray-400"> · {p.fecha}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-semibold text-gray-900">
+                  ${Number(p.monto).toLocaleString('es-MX', { minimumFractionDigits: 0 })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleEliminar(p.id)}
+                  className="text-gray-300 hover:text-red-500 text-base font-bold
+                             leading-none px-1"
+                  title="Eliminar pago"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className="flex justify-between text-xs text-gray-500 pt-1">
+            <span>Total registrado</span>
+            <span className="font-semibold">
+              ${totalRegistrado.toLocaleString('es-MX', { minimumFractionDigits: 0 })}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Fila para agregar un pago nuevo */}
+      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
+        <select value={metodo} onChange={e => setMetodo(e.target.value)} className={estiloInput}>
+          {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select value={tipo} onChange={e => setTipo(e.target.value)} className={estiloInput}>
+          <option value="">— Tipo (opcional) —</option>
+          {TIPOS_PAGO.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <input
+          type="number"
+          min="0"
+          step="any"
+          value={monto}
+          onChange={e => setMonto(e.target.value)}
+          placeholder="Monto"
+          className={estiloInput}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={handleAgregar}
+        disabled={guardando || !monto}
+        className="w-full py-2.5 border-2 border-dashed border-amber-300 rounded-xl
+                   text-sm font-medium text-amber-700 hover:bg-amber-50
+                   active:bg-amber-100 disabled:opacity-50 transition-colors"
+      >
+        {guardando ? 'Guardando…' : '+ Agregar pago'}
+      </button>
     </div>
   )
 }

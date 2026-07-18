@@ -10,7 +10,7 @@
 --
 --  Orden de creación = orden de dependencias:
 --    1. categorias  2. proveedores  3. productos
---    4. usuarios    5. notas        6. partidas
+--    4. usuarios    5. notas        6. partidas    7. pagos
 --  Las tablas "padre" se crean antes que las que las referencian.
 --  (usuarios va ANTES de notas porque notas referencia a usuarios.)
 --
@@ -63,6 +63,12 @@ CREATE TABLE proveedores (
 --    visible_en_sitio: controla qué sale al productos.json público.
 --    categoria_id / proveedor_id quedan NULLABLE a propósito:
 --      una pieza a medida puede no tener proveedor.
+--    fecha_ingreso (NUEVO, migración 006) = cuándo entra la pieza al
+--      catálogo, para ver altas de inventario a lo largo del tiempo.
+--      DEFAULT CURRENT_DATE aquí porque este archivo es la foto para
+--      una base NUEVA (sin filas viejas que falsear); en producción,
+--      la migración 006 la agrega SIN default primero para no
+--      backfillear piezas viejas con la fecha de hoy.
 -- ------------------------------------------------------------
 CREATE TABLE productos (
     id               SERIAL PRIMARY KEY,
@@ -78,8 +84,11 @@ CREATE TABLE productos (
     visible_en_sitio BOOLEAN NOT NULL DEFAULT true,
     descuento_pct    NUMERIC(5,2),
     ubicaciones      TEXT[] DEFAULT '{}',
-    costo            NUMERIC(10,2) NOT NULL DEFAULT 0
+    costo            NUMERIC(10,2) NOT NULL DEFAULT 0,
+    fecha_ingreso    DATE DEFAULT CURRENT_DATE
 );
+
+CREATE INDEX idx_productos_fecha_ingreso ON productos (fecha_ingreso);
 
 
 -- ------------------------------------------------------------
@@ -148,6 +157,14 @@ CREATE TABLE usuarios (
 --    NOTA: 'vendedor' (texto libre, el nombre escrito en el papel) y
 --      'usuario_id' (enlace estructurado) coexisten: uno es el dato
 --      histórico/textual, el otro es para permisos y filtrado.
+--
+--    vendedor_id (NUEVO, migración 005) = enlace estructurado al
+--      usuario que hizo la venta. A diferencia de 'vendedor' (texto
+--      congelado al momento de guardar la nota), este SIEMPRE resuelve
+--      al nombre ACTUAL del usuario vía JOIN — si alguien cambia su
+--      nombre en Usuarios, todas sus notas pasadas lo reflejan de
+--      inmediato. 'vendedor' (texto) sigue existiendo como respaldo
+--      para notas de papel sin cuenta de sistema asociada.
 -- ------------------------------------------------------------
 CREATE TABLE notas (
     folio            VARCHAR(20) PRIMARY KEY,
@@ -162,6 +179,7 @@ CREATE TABLE notas (
     telefono         VARCHAR(20),
     consideraciones  TEXT,
     usuario_id       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    vendedor_id      INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
     foto_nota        TEXT
 );
 
@@ -192,6 +210,52 @@ CREATE TABLE partidas (
     precio_unitario NUMERIC(10,2) NOT NULL DEFAULT 0,
     importe         NUMERIC(10,2) GENERATED ALWAYS AS (cantidad * precio_unitario) STORED
 );
+
+
+-- ------------------------------------------------------------
+-- 7. PAGOS  (migración 007 — cómo se cobró cada nota)
+--    Tabla nueva en vez de columnas en NOTAS porque un pedido
+--    normalmente se cobra en más de un momento (anticipo al
+--    levantar el pedido, resta al entregar), y cada momento puede
+--    a su vez dividirse entre métodos (parte efectivo, parte
+--    tarjeta). anticipo/resta en NOTAS siguen siendo la fuente de
+--    verdad del monto total; PAGOS es el desglose de cómo se cobró.
+--
+--    folio_pedido -> notas(folio) ON DELETE CASCADE, igual que en
+--      PARTIDAS: un pago no existe sin su nota.
+--    usuario_id -> usuarios(id) ON DELETE SET NULL, igual que en
+--      NOTAS: es un registro financiero, se conserva aunque se
+--      borre el usuario que lo cobró.
+--    metodo es VARCHAR libre (no CHECK): agregar un método de pago
+--      nuevo el día de mañana no debe requerir otra migración.
+--    tipo es libre y opcional: 'anticipo' | 'liquidacion' | 'abono',
+--      solo para contexto, no se valida a nivel DB.
+-- ------------------------------------------------------------
+CREATE TABLE pagos (
+    id           SERIAL PRIMARY KEY,
+    folio_pedido VARCHAR(20) NOT NULL REFERENCES notas(folio) ON DELETE CASCADE,
+    fecha        DATE NOT NULL DEFAULT CURRENT_DATE,
+    tipo         VARCHAR(20),
+    metodo       VARCHAR(20) NOT NULL,
+    monto        NUMERIC(10,2) NOT NULL CHECK (monto > 0),
+    usuario_id   INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    creado_en    TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_pagos_folio_pedido ON pagos (folio_pedido);
+
+-- Vista de resumen: desglose de pagos por método, uno por folio.
+-- Usada por el detalle de nota para mostrar "efectivo: $X / tarjeta: $Y"
+-- sin un segundo round-trip ni recalcular en Python.
+CREATE VIEW notas_pagos_resumen AS
+SELECT
+    folio_pedido,
+    SUM(monto) FILTER (WHERE metodo = 'efectivo')      AS total_efectivo,
+    SUM(monto) FILTER (WHERE metodo = 'tarjeta')        AS total_tarjeta,
+    SUM(monto) FILTER (WHERE metodo = 'transferencia')  AS total_transferencia,
+    SUM(monto)                                          AS total_pagado
+FROM pagos
+GROUP BY folio_pedido;
 
 
 -- ------------------------------------------------------------

@@ -176,6 +176,51 @@ function ContenidoNota({ nota, usuario, puedeEscribir }) {
     }
   }
 
+  // ── Envío por WhatsApp ────────────────────────────────────────────────────
+  // WhatsApp no tiene una forma gratuita de adjuntar un archivo automáticamente
+  // desde un enlace — solo las APIs de negocio de pago (Twilio, Meta Cloud API)
+  // pueden hacerlo. Por eso: abrimos WhatsApp con un mensaje-resumen ya
+  // redactado al número del cliente, y disparamos la descarga del PDF al mismo
+  // tiempo para que quien atiende lo adjunte a mano en la conversación.
+  function handleEnviarWhatsApp() {
+    const resumen = [
+      `Nota ${nota.folio}`,
+      nota.nombre_cliente && `Cliente: ${nota.nombre_cliente}`,
+      `Total: ${mxn(nota.total)}`,
+      hayResta && `Resta: ${mxn(nota.resta)}`,
+      `Estatus: ${nota.estatus}`,
+    ].filter(Boolean).join('\n')
+
+    const digitos = (nota.telefono || '').replace(/\D/g, '')
+    // Números mexicanos de 10 dígitos necesitan el código de país 52 para wa.me.
+    const numeroWA = digitos.length === 10 ? `52${digitos}` : digitos
+
+    const texto = encodeURIComponent(resumen)
+    const url = numeroWA ? `https://wa.me/${numeroWA}?text=${texto}` : `https://wa.me/?text=${texto}`
+    window.open(url, '_blank')
+
+    handleDescargarPDF()
+  }
+
+  // ── Envío por correo ──────────────────────────────────────────────────────
+  const [enviandoEmail, setEnviandoEmail] = useState(false)
+  const [resultadoEmail, setResultadoEmail] = useState(null) // { ok, mensaje }
+
+  async function handleEnviarEmail() {
+    setEnviandoEmail(true)
+    setResultadoEmail(null)
+    try {
+      const res = await apiFetch(`/notas/${nota.folio}/enviar-email`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.detail || 'No se pudo enviar el correo.')
+      setResultadoEmail({ ok: true, mensaje: `Enviado a ${data.destinatario}` })
+    } catch (err) {
+      setResultadoEmail({ ok: false, mensaje: err.message })
+    } finally {
+      setEnviandoEmail(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
 
@@ -219,6 +264,23 @@ function ContenidoNota({ nota, usuario, puedeEscribir }) {
           <CeldaMonto etiqueta="Cantidad Pagada" valor={nota.anticipo} />
           <CeldaMonto etiqueta="Resta"    valor={nota.resta}    pendiente={hayResta} />
         </div>
+
+        {/* Desglose de cómo se cobró (efectivo/tarjeta/transferencia).
+            Es un registro aparte del anticipo/resta de arriba — anticipo/resta
+            siguen siendo la fuente de verdad del monto; esto es solo el CÓMO. */}
+        {nota.pagos_resumen && nota.pagos_resumen.total_pagado > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+            {nota.pagos_resumen.total_efectivo > 0 && (
+              <span>Efectivo: <span className="font-semibold text-gray-700">{mxn(nota.pagos_resumen.total_efectivo)}</span></span>
+            )}
+            {nota.pagos_resumen.total_tarjeta > 0 && (
+              <span>Tarjeta: <span className="font-semibold text-gray-700">{mxn(nota.pagos_resumen.total_tarjeta)}</span></span>
+            )}
+            {nota.pagos_resumen.total_transferencia > 0 && (
+              <span>Transferencia: <span className="font-semibold text-gray-700">{mxn(nota.pagos_resumen.total_transferencia)}</span></span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Partidas ── */}
@@ -287,6 +349,34 @@ function ContenidoNota({ nota, usuario, puedeEscribir }) {
         >
           {descargando ? 'Generando PDF…' : 'Descargar PDF / Imprimir nota'}
         </button>
+
+        {/* Enviar — WhatsApp abre un mensaje-resumen prellenado y descarga el
+            PDF para adjuntarlo a mano (WhatsApp no permite adjuntar archivos
+            automáticamente desde un enlace sin una API de pago). Correo manda
+            el PDF completo como adjunto a la casilla del negocio. */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={handleEnviarWhatsApp}
+            className="border border-gray-200 text-gray-700 text-sm font-medium
+                       py-3 rounded-xl hover:bg-gray-50 transition-colors text-center"
+          >
+            Enviar por WhatsApp
+          </button>
+          <button
+            onClick={handleEnviarEmail}
+            disabled={enviandoEmail}
+            className="border border-gray-200 text-gray-700 text-sm font-medium
+                       py-3 rounded-xl hover:bg-gray-50 disabled:opacity-50
+                       disabled:cursor-not-allowed transition-colors text-center"
+          >
+            {enviandoEmail ? 'Enviando…' : 'Enviar por correo'}
+          </button>
+        </div>
+        {resultadoEmail && (
+          <p className={`text-xs text-center ${resultadoEmail.ok ? 'text-green-600' : 'text-red-600'}`}>
+            {resultadoEmail.mensaje}
+          </p>
+        )}
 
         {puedeEditar && (
           <Link

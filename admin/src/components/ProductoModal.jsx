@@ -39,6 +39,9 @@ import GaleriaFotos from './GaleriaFotos'
 // Las cuatro ubicaciones físicas del negocio (etiquetas, no conteos)
 const UBICACIONES_OPCIONES = ['Local Mexico', 'Local Jose', 'Local Amarillo', 'Almacen']
 
+// Fecha de hoy en formato YYYY-MM-DD (el que espera <input type="date">)
+const hoy = () => new Date().toISOString().slice(0, 10)
+
 const FORM_VACÍO = {
   nombre:          '',
   categoria_id:    '',   // '' = "sin categoría" en el select
@@ -52,6 +55,7 @@ const FORM_VACÍO = {
   descuento_pct:   '',
   visible_en_sitio: true,
   ubicaciones:     [],   // array de strings — puede tener varias a la vez
+  fecha_ingreso:   hoy(), // producto nuevo = hoy por defecto; editable para pedidos atrasados
 }
 
 export default function ProductoModal({ producto, onGuardado, onCerrar }) {
@@ -96,6 +100,10 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
         descuento_pct:    producto.descuento_pct?.toString() ?? '',
         visible_en_sitio: producto.visible_en_sitio ?? true,
         ubicaciones:      producto.ubicaciones ?? [],
+        // Productos de antes de la migración 006 pueden no tener fecha_ingreso
+        // (fecha desconocida) — se deja vacío en vez de forzar la de hoy,
+        // que sería falsa. El admin puede llenarla a mano si la conoce.
+        fecha_ingreso:    producto.fecha_ingreso ?? '',
       })
     } else {
       setForm(FORM_VACÍO)
@@ -165,6 +173,7 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
       descuento_pct:    form.descuento_pct !== '' ? parseFloat(form.descuento_pct) : null,
       visible_en_sitio: form.visible_en_sitio,
       ubicaciones:      form.ubicaciones,
+      fecha_ingreso:    form.fecha_ingreso || null,
     }
 
     setGuardando(true)
@@ -299,6 +308,18 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
               min="0"
               step="1"
               placeholder="0"
+              className={inputCls}
+            />
+          </Campo>
+
+          {/* Fecha de ingreso al catálogo — para ver altas de inventario en el
+              tiempo. Vacía = fecha desconocida (producto de antes de llevar
+              este registro); editable para poder capturar entradas atrasadas. */}
+          <Campo label="Fecha de ingreso al catálogo">
+            <input
+              type="date"
+              value={form.fecha_ingreso}
+              onChange={cambiar('fecha_ingreso')}
               className={inputCls}
             />
           </Campo>

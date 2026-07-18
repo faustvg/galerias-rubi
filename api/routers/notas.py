@@ -24,7 +24,11 @@ INVENTARIO:
   el admin debe revisar — el sistema no la oculta ni la previene.
 """
 
-from datetime import date
+import asyncio
+import os
+import smtplib
+from datetime import date, datetime
+from email.message import EmailMessage
 from io import BytesIO
 from pathlib import Path
 from typing import Literal, Optional
@@ -98,7 +102,11 @@ class NotaCreate(BaseModel):
     estatus:         Literal["Presupuesto", "En proceso", "Entregado"] = "Presupuesto"
     total:           float  = Field(0.0, ge=0)
     anticipo:        float  = Field(0.0, ge=0)
-    vendedor:        Optional[str] = None
+    # Enlace estructurado al usuario que hizo la venta (ver NOTA en schema.sql).
+    # Reemplaza al viejo campo de texto libre: el nombre mostrado siempre se
+    # resuelve en vivo desde usuarios.nombre, así que un cambio de nombre se
+    # refleja de inmediato en notas pasadas.
+    vendedor_id:     Optional[int] = None
     nombre_cliente:  Optional[str] = None
     telefono:        Optional[str] = None
     consideraciones: Optional[str] = None
@@ -119,7 +127,7 @@ class NotaUpdate(BaseModel):
     estatus:         Optional[Literal["Presupuesto", "En proceso", "Entregado"]] = None
     total:           Optional[float] = Field(None, ge=0)
     anticipo:        Optional[float] = Field(None, ge=0)
-    vendedor:        Optional[str] = None
+    vendedor_id:     Optional[int] = None
     nombre_cliente:  Optional[str] = None
     telefono:        Optional[str] = None
     consideraciones: Optional[str] = None
@@ -151,12 +159,21 @@ class NotaResumen(BaseModel):
     total:          float
     anticipo:       float
     resta:          float
-    vendedor:       Optional[str]
+    vendedor:       Optional[str]   # nombre a mostrar: en vivo si hay vendedor_id, si no el texto histórico
+    vendedor_id:    Optional[int]
     nombre_cliente: Optional[str]
     telefono:       Optional[str]
     usuario_id:     Optional[int]
     nombre_usuario: Optional[str]   # join de usuarios
     num_partidas:   int
+
+
+class PagosResumen(BaseModel):
+    """Desglose de lo cobrado por método — espejo de la vista notas_pagos_resumen."""
+    total_efectivo:      float
+    total_tarjeta:       float
+    total_transferencia: float
+    total_pagado:        float
 
 
 class NotaDetalle(BaseModel):
@@ -169,7 +186,8 @@ class NotaDetalle(BaseModel):
     total:           float
     anticipo:        float
     resta:           float
-    vendedor:        Optional[str]
+    vendedor:        Optional[str]   # nombre a mostrar: en vivo si hay vendedor_id, si no el texto histórico
+    vendedor_id:     Optional[int]
     nombre_cliente:  Optional[str]
     telefono:        Optional[str]
     consideraciones: Optional[str]
@@ -177,6 +195,30 @@ class NotaDetalle(BaseModel):
     usuario_id:      Optional[int]
     nombre_usuario:  Optional[str]
     partidas:        list[PartidaOut]
+    pagos_resumen:   PagosResumen   # desglose de cómo se ha cobrado (ver tabla pagos)
+
+
+# ---------------------------------------------------------------------------
+# Schemas — Pagos (cómo se cobró la nota: efectivo / tarjeta / transferencia)
+# ---------------------------------------------------------------------------
+
+class PagoInput(BaseModel):
+    fecha:  Optional[date] = None   # si no se manda, el endpoint usa hoy
+    tipo:   Optional[str]  = None   # 'anticipo' | 'liquidacion' | 'abono' — libre, informativo
+    metodo: str                     # 'efectivo' | 'tarjeta' | 'transferencia' | ... — libre
+    monto:  float = Field(..., gt=0)
+
+
+class PagoOut(BaseModel):
+    id:             int
+    folio_pedido:   str
+    fecha:          date
+    tipo:           Optional[str]
+    metodo:         str
+    monto:          float
+    usuario_id:     Optional[int]
+    nombre_usuario: Optional[str]   # join de usuarios — quién cobró
+    creado_en:      datetime
 
 
 # ---------------------------------------------------------------------------
@@ -267,10 +309,10 @@ async def _restaurar_inventario(conn, folio: str) -> None:
 # Mapeadores de filas a dicts (evitan repetir los índices en cada endpoint)
 
 def _fila_a_resumen(r) -> dict:
-    # r[12] = num_partidas, r[13] = nombre_ancla (mueble más caro del subquery)
+    # r[13] = num_partidas, r[14] = nombre_ancla (mueble más caro del subquery)
     return {
         "folio":          r[0],
-        "etiqueta":       _armar_etiqueta(r[13], r[12], r[1], r[0], r[2]),
+        "etiqueta":       _armar_etiqueta(r[14], r[13], r[1], r[0], r[2]),
         "fecha_pedido":   r[1],
         "fecha_entrega":  r[2],
         "estatus":        r[3],
@@ -278,11 +320,12 @@ def _fila_a_resumen(r) -> dict:
         "anticipo":       float(r[5] or 0),
         "resta":          float(r[6] or 0),
         "vendedor":       r[7],
-        "nombre_cliente": r[8],
-        "telefono":       r[9],
-        "usuario_id":     r[10],
-        "nombre_usuario": r[11],
-        "num_partidas":   r[12],
+        "vendedor_id":    r[8],
+        "nombre_cliente": r[9],
+        "telefono":       r[10],
+        "usuario_id":     r[11],
+        "nombre_usuario": r[12],
+        "num_partidas":   r[13],
     }
 
 
@@ -296,12 +339,13 @@ def _fila_a_detalle(r) -> dict:
         "anticipo":        float(r[5] or 0),
         "resta":           float(r[6] or 0),
         "vendedor":        r[7],
-        "nombre_cliente":  r[8],
-        "telefono":        r[9],
-        "consideraciones": r[10],
-        "foto_nota":       r[11],
-        "usuario_id":      r[12],
-        "nombre_usuario":  r[13],
+        "vendedor_id":     r[8],
+        "nombre_cliente":  r[9],
+        "telefono":        r[10],
+        "consideraciones": r[11],
+        "foto_nota":       r[12],
+        "usuario_id":      r[13],
+        "nombre_usuario":  r[14],
     }
 
 
@@ -314,6 +358,52 @@ def _fila_a_partida(r) -> dict:
         "precio_unitario": float(r[4] or 0),
         "importe":         float(r[5] or 0),
         "nombre_producto": r[6],
+    }
+
+
+def _fila_a_pago(r) -> dict:
+    return {
+        "id":             r[0],
+        "folio_pedido":   r[1],
+        "fecha":          r[2],
+        "tipo":           r[3],
+        "metodo":         r[4],
+        "monto":          float(r[5] or 0),
+        "usuario_id":     r[6],
+        "nombre_usuario": r[7],
+        "creado_en":      r[8],
+    }
+
+
+async def _obtener_pagos_resumen(conn, folio: str) -> dict:
+    """
+    Lee el desglose de pagos desde la vista notas_pagos_resumen.
+    Si la nota no tiene pagos registrados todavía, la vista no devuelve
+    fila (el GROUP BY no produce una para folios sin filas en pagos) —
+    en ese caso se devuelven ceros en vez de None, para que el frontend
+    no tenga que manejar un caso especial.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT total_efectivo, total_tarjeta, total_transferencia, total_pagado
+            FROM   notas_pagos_resumen
+            WHERE  folio_pedido = %s
+            """,
+            (folio,),
+        )
+        row = await cur.fetchone()
+
+    if row is None:
+        return {
+            "total_efectivo": 0.0, "total_tarjeta": 0.0,
+            "total_transferencia": 0.0, "total_pagado": 0.0,
+        }
+    return {
+        "total_efectivo":      float(row[0] or 0),
+        "total_tarjeta":       float(row[1] or 0),
+        "total_transferencia": float(row[2] or 0),
+        "total_pagado":        float(row[3] or 0),
     }
 
 
@@ -332,15 +422,27 @@ _SQL_PARTIDAS = """
     ORDER BY pt.id
 """
 
+_SQL_PAGOS = """
+    SELECT
+        pg.id, pg.folio_pedido, pg.fecha, pg.tipo, pg.metodo, pg.monto,
+        pg.usuario_id, u.nombre AS nombre_usuario, pg.creado_en
+    FROM  pagos    pg
+    LEFT  JOIN usuarios u ON u.id = pg.usuario_id
+    WHERE pg.folio_pedido = %s
+    ORDER BY pg.fecha, pg.id
+"""
+
 _SQL_DETALLE = """
     SELECT
         n.folio, n.fecha_pedido, n.fecha_entrega, n.estatus,
         n.total, n.anticipo, n.resta,
-        n.vendedor, n.nombre_cliente, n.telefono,
+        COALESCE(uv.nombre, n.vendedor) AS vendedor, n.vendedor_id,
+        n.nombre_cliente, n.telefono,
         n.consideraciones, n.foto_nota,
         n.usuario_id, u.nombre AS nombre_usuario
     FROM  notas    n
-    LEFT  JOIN usuarios u ON u.id = n.usuario_id
+    LEFT  JOIN usuarios u  ON u.id  = n.usuario_id
+    LEFT  JOIN usuarios uv ON uv.id = n.vendedor_id
     WHERE n.folio = %s
 """
 
@@ -362,7 +464,7 @@ async def crear_nota(
             """
             INSERT INTO notas
               (folio, fecha_pedido, fecha_entrega, estatus, total, anticipo,
-               vendedor, nombre_cliente, telefono, consideraciones, foto_nota,
+               vendedor_id, nombre_cliente, telefono, consideraciones, foto_nota,
                usuario_id)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
@@ -373,7 +475,7 @@ async def crear_nota(
                 data.estatus,
                 data.total,
                 data.anticipo,
-                data.vendedor,
+                data.vendedor_id,
                 data.nombre_cliente,
                 data.telefono,
                 data.consideraciones,
@@ -407,7 +509,7 @@ async def crear_nota(
 @router.get("/notas", response_model=list[NotaResumen])
 async def listar_notas(
     # Filtros backend — se combinan con AND; todos son opcionales
-    vendedor_id: Optional[int]  = Query(None, description="Filtrar por usuario_id del vendedor"),
+    vendedor_id: Optional[int]  = Query(None, description="Filtrar por vendedor_id (usuario que hizo la venta)"),
     fecha_desde: Optional[date] = Query(None, description="Fecha de pedido desde (inclusive)"),
     fecha_hasta: Optional[date] = Query(None, description="Fecha de pedido hasta (inclusive)"),
     busqueda:    Optional[str]  = Query(None, description="Búsqueda en modificaciones y consideraciones"),
@@ -442,7 +544,8 @@ async def listar_notas(
         SELECT
             n.folio, n.fecha_pedido, n.fecha_entrega, n.estatus,
             n.total, n.anticipo, n.resta,
-            n.vendedor, n.nombre_cliente, n.telefono,
+            COALESCE(uv.nombre, n.vendedor) AS vendedor, n.vendedor_id,
+            n.nombre_cliente, n.telefono,
             n.usuario_id, u.nombre AS nombre_usuario,
             (SELECT COUNT(*) FROM partidas p  WHERE p.folio_pedido  = n.folio) AS num_partidas,
             (
@@ -454,7 +557,8 @@ async def listar_notas(
                 LIMIT  1
             ) AS nombre_ancla
         FROM  notas    n
-        LEFT  JOIN usuarios u ON u.id = n.usuario_id
+        LEFT  JOIN usuarios u  ON u.id  = n.usuario_id
+        LEFT  JOIN usuarios uv ON uv.id = n.vendedor_id
     """
 
     # ── Condiciones dinámicas (todas hardcodeadas en SQL; user data solo en params) ─
@@ -466,7 +570,7 @@ async def listar_notas(
         params.append(usuario.id)
 
     if vendedor_id is not None:
-        conditions.append("n.usuario_id = %s")
+        conditions.append("n.vendedor_id = %s")
         params.append(vendedor_id)
 
     if fecha_desde is not None:
@@ -520,8 +624,8 @@ async def obtener_nota(
     if row is None:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
 
-    # row[12] = usuario_id de la nota
-    _verificar_acceso(usuario, row[12])
+    # row[13] = usuario_id de la nota
+    _verificar_acceso(usuario, row[13])
 
     async with conn.cursor() as cur:
         await cur.execute(_SQL_PARTIDAS, (folio,))
@@ -530,6 +634,7 @@ async def obtener_nota(
     partidas = [_fila_a_partida(r) for r in partidas_rows]
     detalle  = _fila_a_detalle(row)
     detalle["partidas"] = partidas
+    detalle["pagos_resumen"] = await _obtener_pagos_resumen(conn, folio)
 
     # Calcular etiqueta desde las partidas ya cargadas:
     # buscar la de mayor precio_unitario como ancla.
@@ -864,6 +969,25 @@ def _generar_pdf_bytes(nota: dict, partidas: list) -> bytes:
         pdf.multi_cell(W, 5, _latin1(consideraciones), align="L")
         pdf.ln(4)
 
+    # ── Condiciones del pedido (anticipo / cancelación) ───────────────────────
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(W, 6, "CONDICIONES", ln=True)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.multi_cell(
+        W, 4.5,
+        _latin1(
+            "- Después de 30 días de la fecha del pedido no se aceptan "
+            "reclamaciones sobre el anticipo.\n"
+            "- En caso de cancelación del pedido se cobrará un 10% del "
+            "valor total del pedido."
+        ),
+        align="L",
+    )
+    pdf.ln(4)
+
     # ── Leyenda fiscal (refuerzo al final) ────────────────────────────────────
     pdf.set_draw_color(200, 200, 200)
     pdf.line(15, pdf.get_y(), 195, pdf.get_y())
@@ -896,7 +1020,7 @@ async def generar_pdf_nota(
     if row is None:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
 
-    _verificar_acceso(usuario, row[12])   # row[12] = usuario_id de la nota
+    _verificar_acceso(usuario, row[13])   # row[13] = usuario_id de la nota
 
     async with conn.cursor() as cur:
         await cur.execute(_SQL_PARTIDAS, (folio,))
@@ -913,3 +1037,212 @@ async def generar_pdf_nota(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{nombre_archivo}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# ENDPOINT 6 — Enviar el PDF de la nota por correo
+# ---------------------------------------------------------------------------
+# Envía una copia del PDF a la casilla del negocio (NOTA_EMAIL_DESTINO en
+# api/.env, por defecto mueblesrubimx@gmail.com) — pensado como respaldo /
+# archivo de la nota, no como envío al cliente (no hay campo de email de
+# cliente en el esquema, solo teléfono).
+#
+# Requiere en api/.env:
+#   SMTP_HOST      (opcional, default smtp.gmail.com)
+#   SMTP_PORT      (opcional, default 465)
+#   SMTP_USER      la cuenta que envía (ej. mueblesrubimx@gmail.com)
+#   SMTP_PASSWORD  contraseña de aplicación de Gmail (NO la contraseña normal
+#                  de la cuenta — Cuenta de Google → Seguridad → Verificación
+#                  en 2 pasos → Contraseñas de aplicaciones)
+#   NOTA_EMAIL_DESTINO (opcional, default mueblesrubimx@gmail.com)
+# ---------------------------------------------------------------------------
+
+NOTA_EMAIL_DESTINO_DEFAULT = "mueblesrubimx@gmail.com"
+
+
+def _enviar_pdf_por_email(
+    destinatario: str,
+    asunto: str,
+    cuerpo: str,
+    pdf_bytes: bytes,
+    nombre_archivo: str,
+) -> None:
+    """
+    Envío SMTP bloqueante — se llama vía asyncio.to_thread() desde el
+    endpoint async para no congelar el event loop mientras dura la
+    conexión con el servidor de correo.
+    """
+    usuario_smtp   = os.getenv("SMTP_USER")
+    password_smtp  = os.getenv("SMTP_PASSWORD")
+
+    if not usuario_smtp or not password_smtp:
+        raise RuntimeError(
+            "El envío de correo no está configurado: faltan SMTP_USER / "
+            "SMTP_PASSWORD en api/.env."
+        )
+
+    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.getenv("SMTP_PORT", "465"))
+
+    msg = EmailMessage()
+    msg["Subject"] = asunto
+    msg["From"]    = os.getenv("SMTP_FROM", usuario_smtp)
+    msg["To"]      = destinatario
+    msg.set_content(cuerpo)
+    msg.add_attachment(
+        pdf_bytes, maintype="application", subtype="pdf", filename=nombre_archivo
+    )
+
+    with smtplib.SMTP_SSL(host, port) as server:
+        server.login(usuario_smtp, password_smtp)
+        server.send_message(msg)
+
+
+@router.post("/notas/{folio}/enviar-email")
+async def enviar_nota_email(
+    folio: str,
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    # Misma lógica que obtener_nota/generar_pdf_nota para cargar y verificar acceso.
+    async with conn.cursor() as cur:
+        await cur.execute(_SQL_DETALLE, (folio,))
+        row = await cur.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+
+    _verificar_acceso(usuario, row[13])   # row[13] = usuario_id de la nota
+
+    async with conn.cursor() as cur:
+        await cur.execute(_SQL_PARTIDAS, (folio,))
+        partidas_rows = await cur.fetchall()
+
+    nota_data      = _fila_a_detalle(row)
+    partidas_lista = [_fila_a_partida(r) for r in partidas_rows]
+    pdf_bytes      = bytes(_generar_pdf_bytes(nota_data, partidas_lista))
+
+    destinatario = os.getenv("NOTA_EMAIL_DESTINO", NOTA_EMAIL_DESTINO_DEFAULT)
+    cliente      = nota_data.get("nombre_cliente") or "sin nombre"
+    asunto       = f"Nota {folio} - {cliente}"
+    cuerpo = (
+        f"Nota de venta {folio}\n"
+        f"Cliente: {cliente}\n"
+        f"Total: {_fmt_mxn(nota_data.get('total', 0))}\n"
+        f"Resta: {_fmt_mxn(nota_data.get('resta', 0))}\n"
+        f"Enviado desde el panel por: {usuario.nombre}\n"
+    )
+
+    try:
+        await asyncio.to_thread(
+            _enviar_pdf_por_email,
+            destinatario, asunto, cuerpo, pdf_bytes, f"nota-{folio}.pdf",
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except smtplib.SMTPException:
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo enviar el correo. Revisa la configuración SMTP en api/.env.",
+        )
+
+    return {"ok": True, "destinatario": destinatario}
+
+
+# ---------------------------------------------------------------------------
+# ENDPOINT 7 — Pagos (cómo se cobró la nota: efectivo / tarjeta / transferencia)
+# ---------------------------------------------------------------------------
+# Mismo aislamiento que el resto de sub-recursos de notas: un worker solo
+# puede ver/registrar/borrar pagos de SUS PROPIAS notas; admin/superadmin ven
+# y editan todas. anticipo/resta en NOTAS siguen siendo la fuente de verdad
+# del monto total — esto es solo el registro de CÓMO se cobró.
+# ---------------------------------------------------------------------------
+
+async def _obtener_nota_o_404(conn, folio: str) -> Optional[int]:
+    """Devuelve el usuario_id dueño de la nota, o levanta 404 si no existe."""
+    async with conn.cursor() as cur:
+        await cur.execute("SELECT usuario_id FROM notas WHERE folio = %s", (folio,))
+        row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    return row[0]
+
+
+@router.post("/notas/{folio}/pagos", response_model=PagoOut, status_code=201)
+async def crear_pago(
+    folio: str,
+    data: PagoInput,
+    usuario: UsuarioActual = requiere_roles(*ROLES_ESCRITURA),
+    conn=Depends(get_db),
+):
+    nota_usuario_id = await _obtener_nota_o_404(conn, folio)
+    _verificar_acceso(usuario, nota_usuario_id)
+
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            INSERT INTO pagos (folio_pedido, fecha, tipo, metodo, monto, usuario_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (folio, data.fecha or date.today(), data.tipo, data.metodo, data.monto, usuario.id),
+        )
+        nuevo_id = (await cur.fetchone())[0]
+    await conn.commit()
+
+    # Releer el pago recién creado con el join de nombre_usuario ya resuelto.
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT
+                pg.id, pg.folio_pedido, pg.fecha, pg.tipo, pg.metodo, pg.monto,
+                pg.usuario_id, u.nombre AS nombre_usuario, pg.creado_en
+            FROM  pagos pg
+            LEFT  JOIN usuarios u ON u.id = pg.usuario_id
+            WHERE pg.id = %s
+            """,
+            (nuevo_id,),
+        )
+        row = await cur.fetchone()
+
+    return _fila_a_pago(row)
+
+
+@router.get("/notas/{folio}/pagos", response_model=list[PagoOut])
+async def listar_pagos(
+    folio: str,
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    nota_usuario_id = await _obtener_nota_o_404(conn, folio)
+    _verificar_acceso(usuario, nota_usuario_id)
+
+    async with conn.cursor() as cur:
+        await cur.execute(_SQL_PAGOS, (folio,))
+        rows = await cur.fetchall()
+
+    return [_fila_a_pago(r) for r in rows]
+
+
+@router.delete("/notas/{folio}/pagos/{pago_id}")
+async def eliminar_pago(
+    folio: str,
+    pago_id: int,
+    usuario: UsuarioActual = requiere_roles(*ROLES_ESCRITURA),
+    conn=Depends(get_db),
+):
+    nota_usuario_id = await _obtener_nota_o_404(conn, folio)
+    _verificar_acceso(usuario, nota_usuario_id)
+
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "DELETE FROM pagos WHERE id = %s AND folio_pedido = %s RETURNING id",
+            (pago_id, folio),
+        )
+        eliminado = await cur.fetchone()
+
+    if eliminado is None:
+        raise HTTPException(status_code=404, detail="Pago no encontrado.")
+
+    await conn.commit()
+    return {"ok": True}
