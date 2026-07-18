@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -535,3 +536,66 @@ async def historico_utilidad(
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in worker_rows
         ] if worker_rows is not None else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/ingresos-productos
+# ---------------------------------------------------------------------------
+# Cuántos productos NUEVOS entraron al catálogo por periodo (semana/mes),
+# opcionalmente filtrado por proveedor. Usa productos.fecha_ingreso — la
+# fecha en que el MODELO entró al catálogo, no reabastecimientos
+# posteriores (el restock solo suma existencias, no mueve fecha_ingreso).
+#
+# Productos sin fecha_ingreso (catálogo de antes de la migración 006) se
+# excluyen: no tiene sentido meterlos en un bucket de "fecha desconocida"
+# cuando la pregunta es "¿cuánto entró y cuándo?".
+# ---------------------------------------------------------------------------
+
+_AGRUPACION_A_TRUNC = {"semana": "week", "mes": "month"}
+
+
+@router.get("/ingresos-productos")
+async def ingresos_productos(
+    agrupacion: Literal["semana", "mes"] = Query("mes"),
+    proveedor_id: Optional[int] = Query(None, description="Filtrar por proveedor"),
+    _usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    # agrupacion ya viene validada por Literal, pero igual la mapeamos a un
+    # valor fijo nuestro (nunca el texto crudo del cliente) antes de pasarla
+    # a date_trunc — no hay atajo de parámetro %s para el nombre de unidad
+    # de date_trunc, así que esta es la manera segura de fijarla.
+    trunc_unit = _AGRUPACION_A_TRUNC[agrupacion]
+
+    sql = f"""
+        SELECT
+            date_trunc('{trunc_unit}', p.fecha_ingreso)::date AS periodo,
+            COALESCE(prov.proveedor, 'Sin proveedor') AS proveedor,
+            COUNT(*) AS productos_nuevos
+        FROM  productos p
+        LEFT  JOIN proveedores prov ON prov.id = p.proveedor_id
+        WHERE p.fecha_ingreso IS NOT NULL
+    """
+    params: list = []
+    if proveedor_id is not None:
+        sql += " AND p.proveedor_id = %s"
+        params.append(proveedor_id)
+
+    # GROUP BY 1, 2 por posición — no por alias — para evitar el mismo
+    # AmbiguousColumn que ya mordió a utilidad-por-worker si algún día esta
+    # consulta también hace JOIN con categorias (categorias.nombre chocaría
+    # con cualquier alias de nombre en el SELECT).
+    sql += " GROUP BY 1, 2 ORDER BY 1, 2"
+
+    async with conn.cursor() as cur:
+        await cur.execute(sql, params)
+        rows = await cur.fetchall()
+
+    return [
+        {
+            "periodo":          r[0].isoformat(),
+            "proveedor":        r[1],
+            "productos_nuevos": r[2],
+        }
+        for r in rows
+    ]

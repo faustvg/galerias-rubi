@@ -1049,7 +1049,7 @@ async def generar_pdf_nota(
 #
 # Requiere en api/.env:
 #   SMTP_HOST      (opcional, default smtp.gmail.com)
-#   SMTP_PORT      (opcional, default 465)
+#   SMTP_PORT      (opcional, default 587 — STARTTLS; ver nota en _enviar_pdf_por_email)
 #   SMTP_USER      la cuenta que envía (ej. mueblesrubimx@gmail.com)
 #   SMTP_PASSWORD  contraseña de aplicación de Gmail (NO la contraseña normal
 #                  de la cuenta — Cuenta de Google → Seguridad → Verificación
@@ -1071,6 +1071,13 @@ def _enviar_pdf_por_email(
     Envío SMTP bloqueante — se llama vía asyncio.to_thread() desde el
     endpoint async para no congelar el event loop mientras dura la
     conexión con el servidor de correo.
+
+    Puerto 587 + STARTTLS (no 465 + TLS implícito): varios proveedores de
+    VPS, incluido Hetzner, bloquean el puerto 465 saliente por defecto
+    (anti-spam). 587 es texto plano al conectar y sube a TLS con
+    STARTTLS() después del saludo — por eso se usa SMTP() normal, NUNCA
+    SMTP_SSL() (que asume TLS implícito desde el primer byte y truena con
+    'WRONG_VERSION_NUMBER' si el puerto es 587).
     """
     usuario_smtp   = os.getenv("SMTP_USER")
     password_smtp  = os.getenv("SMTP_PASSWORD")
@@ -1082,7 +1089,7 @@ def _enviar_pdf_por_email(
         )
 
     host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.getenv("SMTP_PORT", "465"))
+    port = int(os.getenv("SMTP_PORT", "587"))
 
     msg = EmailMessage()
     msg["Subject"] = asunto
@@ -1093,7 +1100,8 @@ def _enviar_pdf_por_email(
         pdf_bytes, maintype="application", subtype="pdf", filename=nombre_archivo
     )
 
-    with smtplib.SMTP_SSL(host, port) as server:
+    with smtplib.SMTP(host, port) as server:
+        server.starttls()
         server.login(usuario_smtp, password_smtp)
         server.send_message(msg)
 

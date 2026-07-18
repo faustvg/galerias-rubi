@@ -48,8 +48,10 @@ SECRET_KEY=        # generate with: python -c "import secrets; print(secrets.tok
 # SMTP_PASSWORD must be a 16-char Gmail "App Password" (Google Account →
 # Security → 2-Step Verification → App Passwords), NOT the account's login
 # password — Gmail's SMTP rejects plain login passwords.
+# Port 587 + STARTTLS, not 465 + implicit TLS: several VPS providers
+# (including Hetzner) block outbound port 465 by default (anti-spam).
 SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
+SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
 NOTA_EMAIL_DESTINO=mueblesrubimx@gmail.com

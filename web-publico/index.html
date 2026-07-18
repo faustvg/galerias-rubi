@@ -38,6 +38,28 @@
     img { display: block; width: 100%; height: 100%; object-fit: cover; }
     a   { color: inherit; text-decoration: none; }
 
+    /* ── FOCO DE TECLADO ──
+       :focus-visible solo se activa con navegación por teclado (tab), no con
+       clic de mouse — así no aparece un aro alrededor de cada clic, solo
+       cuando de verdad ayuda a saber dónde estás. */
+    a:focus-visible, button:focus-visible {
+      outline: 2px solid var(--btn);
+      outline-offset: 3px;
+    }
+
+    /* ── MOVIMIENTO REDUCIDO ──
+       Quien pide menos movimiento en su sistema operativo lo recibe: toda
+       transición/animación se vuelve casi instantánea, sin perder el estado
+       final (nada se queda oculto a medio camino). */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
     /* ── HEADER ── */
     header {
       position: sticky;
@@ -147,16 +169,30 @@
       overflow: hidden;
     }
 
-    .hero-img {
+    /* Carrusel — varias capas apiladas, cross-fade por opacidad (no por
+       cambiar background-image) para que el navegador precargue todas las
+       fotos de una vez y la transición no tenga parpadeo de carga. */
+    .hero-carrusel {
       position: absolute;
       inset: 0;
-      background: url('img/sala_michelle_3_.png') center/cover no-repeat;
     }
-    .hero-img::after {
+    .hero-slide {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      opacity: 0;
+      transition: opacity 1.4s ease;
+    }
+    .hero-slide.activa { opacity: 1; }
+    .hero-carrusel::after {
       content: '';
       position: absolute;
       inset: 0;
       background: rgba(30,18,12,.32);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hero-slide { transition-duration: .01ms !important; }
     }
 
     .hero-overlay {
@@ -177,6 +213,20 @@
       width: 100%;
       border: 1px solid rgba(255,255,255,.4);
     }
+
+    /* Entrada escalonada al cargar — un solo momento orquestado en toda la
+       página, no animaciones sueltas por todos lados. Es un @keyframes de
+       carga normal (no depende de scroll ni de JS), así que siempre corre;
+       @media (prefers-reduced-motion) de arriba la vuelve instantánea. */
+    @keyframes heroReveal {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .hero-eyebrow, .hero-heading, .hero-box .btn {
+      animation: heroReveal .7s cubic-bezier(.16,1,.3,1) both;
+    }
+    .hero-heading  { animation-delay: .08s; }
+    .hero-box .btn { animation-delay: .16s; }
 
     .hero-eyebrow {
       font-size: .72rem;
@@ -879,7 +929,11 @@
 
 <!-- ══════════ HERO ══════════ -->
 <section id="inicio" style="padding:0;">
-  <div class="hero-img"></div>
+  <div class="hero-carrusel" id="hero-carrusel">
+    <div class="hero-slide activa" style="background-image:url('assets/hero/hero-1.webp')"></div>
+    <div class="hero-slide"        style="background-image:url('assets/hero/hero-2.webp')"></div>
+    <div class="hero-slide"        style="background-image:url('assets/hero/hero-3.webp')"></div>
+  </div>
   <div class="hero-overlay">
     <div class="hero-box">
       <p class="hero-eyebrow">San Pedro Tultepec · Lerma · Más de 30 años</p>
@@ -933,7 +987,7 @@
 <!-- ══════════ NOSOTROS ══════════ -->
 <section id="nosotros">
   <div class="about-img">
-    <img src="img/comedor_1_6_sillas.png" alt="Taller de carpintería Muebles Rubí" />
+    <img src="assets/vertical/historia.webp" alt="Sala Muebles Rubí — sofá y sillones tapizados a mano" />
   </div>
   <div class="about-text">
     <p class="section-label">Nuestra historia</p>
@@ -1024,13 +1078,13 @@
     </div>
     <div class="showcase-gallery">
       <div class="g1">
-        <img src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=900&q=80" alt="Taller de carpintería artesanal" />
+        <img src="assets/vertical/parota-1.webp" alt="Sala de madera Muebles Rubí" />
       </div>
       <div class="g2">
-        <img src="https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=600&q=80" alt="Detalle de madera de parota" />
+        <img src="assets/vertical/parota-2.webp" alt="Sala tapizada Muebles Rubí" />
       </div>
       <div class="g3">
-        <img src="https://images.unsplash.com/photo-1567016526105-22da7c13161a?w=600&q=80" alt="Mueble terminado de madera" />
+        <img src="assets/vertical/parota-3.webp" alt="Ropero de madera de parota" />
       </div>
     </div>
   </div>
@@ -1182,6 +1236,20 @@
      ───────────────────────────────────────────────────────────── */
   const API_BASE  = '/api'           // Producción: 'https://api.galerias-rubi.com/api'
   const WA_NUMBER = '5217225723939'
+
+  /* ── carrusel del hero — rotación automática por opacidad ── */
+  function initHeroCarrusel() {
+    const slides = document.querySelectorAll('#hero-carrusel .hero-slide')
+    if (slides.length < 2) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    let indice = 0
+    setInterval(() => {
+      slides[indice].classList.remove('activa')
+      indice = (indice + 1) % slides.length
+      slides[indice].classList.add('activa')
+    }, 6000)
+  }
+  initHeroCarrusel()
 
   /* ── helpers ── */
   let allProducts = []

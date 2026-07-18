@@ -759,6 +759,12 @@ function PagosEditor({ folio }) {
   const [tipo,   setTipo]   = useState('')
   const [monto,  setMonto]  = useState('')
 
+  // Gate de confirmación: "+ Agregar pago" NO postea de inmediato — solo
+  // muestra un resumen con un botón "Confirmar" explícito. Evita que un
+  // clic accidental (o presionar Enter en el input de monto) registre un
+  // pago sin que quien lo captura lo haya confirmado a propósito.
+  const [confirmando, setConfirmando] = useState(false)
+
   async function cargarPagos() {
     setCargando(true)
     setError(null)
@@ -775,16 +781,21 @@ function PagosEditor({ folio }) {
 
   useEffect(() => { cargarPagos() }, [folio])
 
-  async function handleAgregar() {
+  // Paso 1: pedir confirmación — no llama al backend todavía.
+  function handlePedirConfirmacion() {
     const montoNum = Number(monto)
     if (!montoNum || montoNum <= 0) return
+    setConfirmando(true)
+  }
 
+  // Paso 2: solo aquí se registra el pago de verdad.
+  async function handleConfirmar() {
     setGuardando(true)
     setError(null)
     try {
       const res = await apiFetch(`/notas/${folio}/pagos`, {
         method: 'POST',
-        body: JSON.stringify({ metodo, tipo: tipo || null, monto: montoNum }),
+        body: JSON.stringify({ metodo, tipo: tipo || null, monto: Number(monto) }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -792,12 +803,17 @@ function PagosEditor({ folio }) {
       }
       setMonto('')
       setTipo('')
+      setConfirmando(false)
       await cargarPagos()
     } catch (err) {
       setError(err.message)
     } finally {
       setGuardando(false)
     }
+  }
+
+  function handleCancelarConfirmacion() {
+    setConfirmando(false)
   }
 
   async function handleEliminar(id) {
@@ -859,12 +875,23 @@ function PagosEditor({ folio }) {
         </div>
       )}
 
-      {/* Fila para agregar un pago nuevo */}
+      {/* Fila para agregar un pago nuevo — deshabilitada mientras se confirma,
+          para que el resumen de abajo no quede desincronizado de los campos. */}
       <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
-        <select value={metodo} onChange={e => setMetodo(e.target.value)} className={estiloInput}>
+        <select
+          value={metodo}
+          onChange={e => setMetodo(e.target.value)}
+          disabled={confirmando}
+          className={estiloInput}
+        >
           {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select value={tipo} onChange={e => setTipo(e.target.value)} className={estiloInput}>
+        <select
+          value={tipo}
+          onChange={e => setTipo(e.target.value)}
+          disabled={confirmando}
+          className={estiloInput}
+        >
           <option value="">— Tipo (opcional) —</option>
           {TIPOS_PAGO.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
@@ -874,20 +901,54 @@ function PagosEditor({ folio }) {
           step="any"
           value={monto}
           onChange={e => setMonto(e.target.value)}
+          disabled={confirmando}
           placeholder="Monto"
           className={estiloInput}
         />
       </div>
-      <button
-        type="button"
-        onClick={handleAgregar}
-        disabled={guardando || !monto}
-        className="w-full py-2.5 border-2 border-dashed border-amber-300 rounded-xl
-                   text-sm font-medium text-amber-700 hover:bg-amber-50
-                   active:bg-amber-100 disabled:opacity-50 transition-colors"
-      >
-        {guardando ? 'Guardando…' : '+ Agregar pago'}
-      </button>
+
+      {!confirmando ? (
+        <button
+          type="button"
+          onClick={handlePedirConfirmacion}
+          disabled={!monto}
+          className="w-full py-2.5 border-2 border-dashed border-amber-300 rounded-xl
+                     text-sm font-medium text-amber-700 hover:bg-amber-50
+                     active:bg-amber-100 disabled:opacity-50 transition-colors"
+        >
+          + Agregar pago
+        </button>
+      ) : (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2.5">
+          <p className="text-xs text-amber-900">
+            ¿Registrar <span className="font-semibold capitalize">{metodo}</span>
+            {tipo && <> · {tipo}</>} por{' '}
+            <span className="font-semibold">
+              ${Number(monto).toLocaleString('es-MX', { minimumFractionDigits: 0 })}
+            </span>?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleConfirmar}
+              disabled={guardando}
+              className="flex-1 py-2 bg-amber-600 text-white text-sm font-semibold
+                         rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            >
+              {guardando ? 'Guardando…' : 'Confirmar'}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelarConfirmacion}
+              disabled={guardando}
+              className="flex-1 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100
+                         rounded-lg disabled:opacity-50 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

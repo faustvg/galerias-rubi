@@ -74,7 +74,7 @@
 
     /* ── LAYOUT DEL PRODUCTO ── */
     .producto-wrap {
-      max-width: 1200px;
+      max-width: 1360px;
       margin: 0 auto;
       padding: 4rem 5vw 6rem;
     }
@@ -94,42 +94,70 @@
 
     .producto-layout {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6vw;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 5vw;
       align-items: start;
     }
 
-    /* ── GALERÍA ── */
+    /* ── GALERÍA ──
+       object-fit: contain (no cover): un sofá y un ropero tienen
+       proporciones muy distintas — forzar un cuadrado 1:1 recortaba
+       ambos. El lienzo crece con el viewport (clamp) y deja que cada
+       foto respete su propia forma, como una vitrina. */
+    .producto-galeria { position: sticky; top: 110px; }
     .galeria-principal {
-      aspect-ratio: 1 / 1;
+      position: relative;
+      height: clamp(420px, 44vw, 640px);
       overflow: hidden;
-      background: var(--bg);
+      background: var(--white);
+      cursor: zoom-in;
     }
     .galeria-principal img {
       width: 100%;
       height: 100%;
-      object-fit: cover;
-      transition: opacity .25s ease;
+      object-fit: contain;
+      transition: opacity .3s ease, transform .5s cubic-bezier(.16,1,.3,1);
     }
+    .galeria-principal:hover img { transform: scale(1.035); }
+    .galeria-zoom-cue {
+      position: absolute;
+      right: 1.1rem;
+      bottom: 1.1rem;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(250,248,245,.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity .25s ease, transform .25s ease;
+      pointer-events: none;
+    }
+    .galeria-principal:hover .galeria-zoom-cue { opacity: 1; transform: translateY(0); }
+
     .galeria-thumbs {
       display: flex;
-      gap: .5rem;
-      margin-top: .6rem;
+      gap: .6rem;
+      margin-top: .8rem;
       flex-wrap: wrap;
     }
     .thumb {
-      width: 72px;
-      height: 72px;
+      width: 92px;
+      height: 92px;
       overflow: hidden;
       cursor: pointer;
       border: 2px solid transparent;
       opacity: .5;
+      background: var(--white);
       transition: opacity .2s, border-color .2s;
       flex-shrink: 0;
     }
     .thumb.activa { opacity: 1; border-color: var(--btn); }
     .thumb:hover  { opacity: .8; }
-    .thumb img    { width: 100%; height: 100%; object-fit: cover; }
+    .thumb img    { width: 100%; height: 100%; object-fit: contain; }
 
     /* placeholder sin foto */
     .foto-placeholder {
@@ -141,6 +169,80 @@
       align-items: center;
       justify-content: center;
       color: var(--accent2);
+      cursor: default;
+    }
+
+    /* ── LIGHTBOX ──
+       Vitrina a pantalla completa para ver el detalle del mueble.
+       Fondo casi negro (no la crema de la marca): así la foto es la
+       protagonista, sin competir con el resto de la paleta. */
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(20,15,12,.94);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .3s ease, visibility 0s linear .3s;
+    }
+    .lightbox.abierto {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity .3s ease;
+    }
+    .lightbox-imgwrap {
+      max-width: min(90vw, 1100px);
+      max-height: 86vh;
+      transform: scale(.97);
+      transition: transform .35s cubic-bezier(.16,1,.3,1);
+    }
+    .lightbox.abierto .lightbox-imgwrap { transform: scale(1); }
+    .lightbox-imgwrap img {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: min(90vw, 1100px);
+      max-height: 86vh;
+      object-fit: contain;
+    }
+    .lightbox-cerrar, .lightbox-nav {
+      position: fixed;
+      background: rgba(250,248,245,.12);
+      border: none;
+      color: var(--white);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .2s;
+    }
+    .lightbox-cerrar:hover, .lightbox-nav:hover { background: rgba(250,248,245,.22); }
+    .lightbox-cerrar {
+      top: 1.5rem; right: 1.5rem;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      font-size: 1.1rem;
+    }
+    .lightbox-nav {
+      top: 50%;
+      transform: translateY(-50%);
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      font-size: 1.6rem;
+    }
+    .lightbox-prev { left: 1.5rem; }
+    .lightbox-next { right: 1.5rem; }
+    .lightbox-nav[hidden], .lightbox-cerrar[hidden] { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .galeria-principal img,
+      .lightbox, .lightbox-imgwrap {
+        transition-duration: .01ms !important;
+      }
+      .galeria-principal:hover img { transform: none; }
     }
 
     /* ── INFO ── */
@@ -216,6 +318,8 @@
     /* ── RESPONSIVE ── */
     @media (max-width: 900px) {
       .producto-layout  { grid-template-columns: 1fr; }
+      .producto-galeria { position: static; }
+      .galeria-principal { height: clamp(320px, 90vw, 480px); }
       .footer-top       { grid-template-columns: 1fr 1fr; }
       .footer-brand     { grid-column: 1 / -1; }
     }
@@ -229,7 +333,11 @@
       .footer-top  { grid-template-columns: 1fr; gap: 2.5rem; }
       .wa-bubble   { bottom: 1.2rem; right: 1.2rem; width: 52px; height: 52px; }
       .wa-bubble svg { width: 26px; height: 26px; }
-      .thumb { width: 58px; height: 58px; }
+      .thumb { width: 68px; height: 68px; }
+      .lightbox-nav    { width: 42px; height: 42px; font-size: 1.3rem; }
+      .lightbox-prev   { left: .6rem; }
+      .lightbox-next   { right: .6rem; }
+      .lightbox-cerrar { top: .8rem; right: .8rem; width: 38px; height: 38px; }
     }
   </style>
 </head>
@@ -291,7 +399,7 @@
     <div class="producto-layout">
 
       <!-- Galería -->
-      <div>
+      <div class="producto-galeria">
         <div class="galeria-principal" id="galeria-principal">
           <!-- imagen principal — llenada por JS -->
         </div>
@@ -326,6 +434,16 @@
 
     </div>
   </div>
+</div>
+
+<!-- ══════════ LIGHTBOX — vitrina a pantalla completa ══════════ -->
+<div class="lightbox" id="lightbox" aria-hidden="true">
+  <button class="lightbox-cerrar" id="lightbox-cerrar" aria-label="Cerrar">✕</button>
+  <button class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Foto anterior">‹</button>
+  <div class="lightbox-imgwrap">
+    <img id="lightbox-img" src="" alt="" />
+  </div>
+  <button class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Foto siguiente">›</button>
 </div>
 
 <!-- ══════════ FOOTER ══════════ -->
@@ -398,6 +516,7 @@
 
   let fotosActuales = []
   let indiceActivo  = 0
+  let nombreProducto = ''
 
   function cambiarFoto(indice) {
     indiceActivo = indice
@@ -411,10 +530,73 @@
     document.querySelectorAll('.thumb').forEach((t, i) => {
       t.classList.toggle('activa', i === indice)
     })
+    // Si la vitrina está abierta, seguirle el paso a la miniatura elegida.
+    if (lightbox.classList.contains('abierto')) {
+      actualizarLightbox()
+    }
   }
+
+  /* ── Lightbox — vitrina a pantalla completa para ver el detalle ──
+     Solo tiene sentido si hay al menos una foto real (no el placeholder). */
+  const lightbox = document.getElementById('lightbox')
+
+  function abrirLightbox(indice) {
+    if (!fotosActuales.length) return
+    indiceActivo = indice
+    actualizarLightbox()
+    lightbox.classList.add('abierto')
+    lightbox.setAttribute('aria-hidden', 'false')
+    document.body.style.overflow = 'hidden'   // evita el scroll de fondo detrás de la vitrina
+  }
+
+  function cerrarLightbox() {
+    lightbox.classList.remove('abierto')
+    lightbox.setAttribute('aria-hidden', 'true')
+    document.body.style.overflow = ''
+  }
+
+  function actualizarLightbox() {
+    const img = document.getElementById('lightbox-img')
+    img.src = fotoUrl(fotosActuales[indiceActivo])
+    img.alt = `${nombreProducto} — foto ${indiceActivo + 1}`
+    const haySoloUna = fotosActuales.length <= 1
+    document.getElementById('lightbox-prev').hidden = haySoloUna
+    document.getElementById('lightbox-next').hidden = haySoloUna
+    // Reflejar el cambio también en las miniaturas de la página.
+    document.querySelectorAll('.thumb').forEach((t, i) => {
+      t.classList.toggle('activa', i === indiceActivo)
+    })
+  }
+
+  function lightboxAnterior() {
+    const nuevo = (indiceActivo - 1 + fotosActuales.length) % fotosActuales.length
+    cambiarFoto(nuevo)
+    actualizarLightbox()
+  }
+
+  function lightboxSiguiente() {
+    const nuevo = (indiceActivo + 1) % fotosActuales.length
+    cambiarFoto(nuevo)
+    actualizarLightbox()
+  }
+
+  document.getElementById('lightbox-cerrar').addEventListener('click', cerrarLightbox)
+  document.getElementById('lightbox-prev').addEventListener('click', lightboxAnterior)
+  document.getElementById('lightbox-next').addEventListener('click', lightboxSiguiente)
+  // Clic en el fondo oscuro cierra; clic en la foto misma no (no hace nada, no debe cerrar).
+  lightbox.addEventListener('click', (e) => {
+    if (e.target === lightbox) cerrarLightbox()
+  })
+  document.addEventListener('keydown', (e) => {
+    if (!lightbox.classList.contains('abierto')) return
+    if (e.key === 'Escape')     cerrarLightbox()
+    if (e.key === 'ArrowLeft')  lightboxAnterior()
+    if (e.key === 'ArrowRight') lightboxSiguiente()
+  })
 
   function renderProducto(p) {
     document.title = `${p.nombre} — Muebles Rubí`
+    nombreProducto = p.nombre
 
     // Breadcrumb
     document.getElementById('bc-nombre').textContent = p.nombre
@@ -467,7 +649,14 @@
     const galThumbs    = document.getElementById('galeria-thumbs')
 
     if (fotosActuales.length > 0) {
-      galPrincipal.innerHTML = `<img id="foto-principal-img" src="${fotoUrl(fotosActuales[0])}" alt="${p.nombre}" />`
+      galPrincipal.innerHTML = `
+        <img id="foto-principal-img" src="${fotoUrl(fotosActuales[0])}" alt="${p.nombre}" />
+        <div class="galeria-zoom-cue" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.8-4.8"/><path d="M11 8v6M8 11h6"/>
+          </svg>
+        </div>`
+      galPrincipal.onclick = () => abrirLightbox(indiceActivo)
       if (fotosActuales.length > 1) {
         galThumbs.innerHTML = fotosActuales.map((foto, i) =>
           `<div class="thumb${i === 0 ? ' activa' : ''}" onclick="cambiarFoto(${i})">

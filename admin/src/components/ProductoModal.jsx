@@ -131,6 +131,48 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
     }))
   }
 
+  // --- Restock: sumar existencias sin crear un producto duplicado ---
+  // Cuando llega más stock de un modelo que YA está en el catálogo, la
+  // acción correcta es incrementar existencias en la fila existente — crear
+  // una fila nueva duplicaría el mueble en el sitio público.
+  //
+  // Se guarda de inmediato (PUT directo), independiente del botón principal
+  // "Guardar cambios". Por eso, al terminar, actualizamos form.existencias
+  // con el nuevo total: si no lo hiciéramos, un "Guardar cambios" posterior
+  // reenviaría el valor VIEJO que cargó el modal al abrirse, pisando el
+  // restock que acabamos de guardar.
+  //
+  // fecha_ingreso NO se toca aquí a propósito: sigue respondiendo "¿cuándo
+  // entró este modelo al catálogo?", no "¿cuándo llegó el último embarque?".
+  const [cantidadRestock, setCantidadRestock] = useState('')
+  const [restockeando, setRestockeando]       = useState(false)
+  const [errorRestock, setErrorRestock]       = useState(null)
+
+  async function handleRestock() {
+    const cantidad = parseInt(cantidadRestock)
+    if (isNaN(cantidad) || cantidad <= 0) return
+
+    setRestockeando(true)
+    setErrorRestock(null)
+    try {
+      const nuevoTotal = (parseInt(form.existencias) || 0) + cantidad
+      const res = await apiFetch(`/productos/${producto.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ existencias: nuevoTotal }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail ?? 'No se pudo actualizar las existencias.')
+      }
+      setForm((prev) => ({ ...prev, existencias: String(nuevoTotal) }))
+      setCantidadRestock('')
+    } catch (err) {
+      setErrorRestock(err.message)
+    } finally {
+      setRestockeando(false)
+    }
+  }
+
   // --- Validación y envío ---
   async function handleSubmit(e) {
     e.preventDefault()
@@ -311,6 +353,42 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
               className={inputCls}
             />
           </Campo>
+
+          {/* Restock rápido — solo al editar un producto que ya existe.
+              Suma existencias sin crear un producto duplicado (llegó más
+              stock del mismo modelo, no un modelo nuevo). Se guarda de
+              inmediato, independiente del botón "Guardar cambios". */}
+          {producto && (
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+              <p className="text-xs font-medium text-gray-500 mb-2">
+                Llegó más stock de este mueble
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={cantidadRestock}
+                  onChange={(e) => setCantidadRestock(e.target.value)}
+                  min="1"
+                  step="1"
+                  placeholder="Cantidad"
+                  className={`${inputCls} flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={handleRestock}
+                  disabled={restockeando || !cantidadRestock}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-800 disabled:opacity-50
+                             text-white rounded-xl text-sm font-medium whitespace-nowrap
+                             transition-colors"
+                >
+                  {restockeando ? 'Guardando…' : '+ Agregar existencias'}
+                </button>
+              </div>
+              {errorRestock && (
+                <p className="text-xs text-red-600 mt-1.5">{errorRestock}</p>
+              )}
+            </div>
+          )}
 
           {/* Fecha de ingreso al catálogo — para ver altas de inventario en el
               tiempo. Vacía = fecha desconocida (producto de antes de llevar
