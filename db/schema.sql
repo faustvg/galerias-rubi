@@ -11,6 +11,7 @@
 --  Orden de creación = orden de dependencias:
 --    1. categorias  2. proveedores  3. productos
 --    4. usuarios    5. notas        6. partidas    7. pagos
+--    8. movimientos_inventario
 --  Las tablas "padre" se crean antes que las que las referencian.
 --  (usuarios va ANTES de notas porque notas referencia a usuarios.)
 --
@@ -69,6 +70,9 @@ CREATE TABLE proveedores (
 --      una base NUEVA (sin filas viejas que falsear); en producción,
 --      la migración 006 la agrega SIN default primero para no
 --      backfillear piezas viejas con la fecha de hoy.
+--    destacados (NUEVO, migración 009) = marca manual de qué productos
+--      aparecen en "Lo más buscado" del sitio público. Manual, no
+--      automático — las hermanas deciden desde el panel qué mostrar.
 -- ------------------------------------------------------------
 CREATE TABLE productos (
     id               SERIAL PRIMARY KEY,
@@ -85,10 +89,12 @@ CREATE TABLE productos (
     descuento_pct    NUMERIC(5,2),
     ubicaciones      TEXT[] DEFAULT '{}',
     costo            NUMERIC(10,2) NOT NULL DEFAULT 0,
-    fecha_ingreso    DATE DEFAULT CURRENT_DATE
+    fecha_ingreso    DATE DEFAULT CURRENT_DATE,
+    destacados       BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE INDEX idx_productos_fecha_ingreso ON productos (fecha_ingreso);
+CREATE INDEX idx_productos_destacados ON productos (destacados) WHERE destacados = true;
 
 
 -- ------------------------------------------------------------
@@ -256,6 +262,37 @@ SELECT
     SUM(monto)                                          AS total_pagado
 FROM pagos
 GROUP BY folio_pedido;
+
+
+-- ------------------------------------------------------------
+-- 8. MOVIMIENTOS_INVENTARIO  (migración 008 — historial de entradas)
+--    A diferencia de productos.fecha_ingreso (solo la PRIMERA vez que
+--    el modelo entra al catálogo), esta tabla registra CADA llegada
+--    por separado, con su propia fecha, cantidad y ubicación.
+--    productos.existencias sigue siendo el conteo actual (se
+--    incrementa con cada movimiento nuevo); esta tabla es el desglose
+--    de cómo se llegó a ese número — mismo patrón que PAGOS es el
+--    desglose de cómo se cobró una nota.
+--
+--    producto_id -> productos(id) ON DELETE CASCADE: un movimiento no
+--      existe sin su producto.
+--    usuario_id -> usuarios(id) ON DELETE SET NULL: quién lo registró,
+--      opcional, se conserva si se borra el usuario.
+--    ubicacion es VARCHAR libre, no FK: coincide con el estilo de
+--      productos.ubicaciones (TEXT[] de texto libre).
+-- ------------------------------------------------------------
+CREATE TABLE movimientos_inventario (
+    id           SERIAL PRIMARY KEY,
+    producto_id  INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    cantidad     INTEGER NOT NULL CHECK (cantidad > 0),
+    fecha        DATE NOT NULL DEFAULT CURRENT_DATE,
+    ubicacion    VARCHAR(100),
+    usuario_id   INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    creado_en    TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_movimientos_producto_id ON movimientos_inventario (producto_id);
+CREATE INDEX idx_movimientos_fecha ON movimientos_inventario (fecha);
 
 
 -- ------------------------------------------------------------

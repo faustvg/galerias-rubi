@@ -54,6 +54,7 @@ class ProductoCreate(BaseModel):
     costo:       Annotated[float, Field(ge=0)] = 0   # costo interno, nunca sale al público
     existencias: Annotated[int, Field(ge=0)] = 0
     visible_en_sitio: bool = True
+    destacados: bool = False
     descuento_pct: Optional[Annotated[float, Field(ge=0, le=100)]] = None
     fotos: list[str] = []
     ubicaciones: list[str] = []
@@ -71,10 +72,30 @@ class ProductoUpdate(BaseModel):
     costo:       Optional[Annotated[float, Field(ge=0)]]         = None
     existencias: Optional[Annotated[int, Field(ge=0)]]           = None
     visible_en_sitio: Optional[bool]                             = None
+    destacados: Optional[bool]                                   = None
     descuento_pct: Optional[Annotated[float, Field(ge=0, le=100)]] = None
     fotos: Optional[list[str]] = None
     ubicaciones: Optional[list[str]] = None
     fecha_ingreso: Optional[date] = None   # PUT parcial: no se fuerza ningún default
+
+
+# ---------------------------------------------------------------------------
+# Schemas — Movimientos de inventario (restock)
+# ---------------------------------------------------------------------------
+
+class MovimientoInventarioCreate(BaseModel):
+    cantidad: Annotated[int, Field(gt=0)]
+    fecha: Optional[date] = None       # si no se manda, el endpoint usa hoy
+    ubicacion: Optional[str] = None
+
+
+class MovimientoInventarioOut(BaseModel):
+    id: int
+    producto_id: int
+    cantidad: int
+    fecha: date
+    ubicacion: Optional[str] = None
+    existencias_totales: int   # productos.existencias después de sumar este movimiento
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +118,7 @@ class AdminProducto(BaseModel):
     proveedor: Optional[str] = None
     existencias: int
     visible_en_sitio: bool
+    destacados: bool = False
     ubicaciones: list[str] = []
     fecha_ingreso: Optional[date] = None
 
@@ -229,16 +251,16 @@ async def crear_producto(
                 INSERT INTO productos
                     (nombre, categoria_id, proveedor_id, color, material,
                      descripcion, precio_base, costo, existencias,
-                     visible_en_sitio, descuento_pct, fotos, ubicaciones,
+                     visible_en_sitio, destacados, descuento_pct, fotos, ubicaciones,
                      fecha_ingreso)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
                     data.nombre, data.categoria_id, data.proveedor_id,
                     data.color, data.material, data.descripcion,
                     data.precio_base, data.costo, data.existencias,
-                    data.visible_en_sitio, data.descuento_pct, data.fotos,
+                    data.visible_en_sitio, data.destacados, data.descuento_pct, data.fotos,
                     data.ubicaciones, fecha_ingreso,
                 ),
             )
@@ -304,7 +326,7 @@ async def listar_todos_productos(
                 p.categoria_id, c.nombre AS categoria,
                 p.proveedor_id, prov.proveedor,
                 p.existencias, p.visible_en_sitio, p.ubicaciones,
-                p.fecha_ingreso
+                p.fecha_ingreso, p.destacados
             FROM productos p
             LEFT JOIN categorias c    ON c.id   = p.categoria_id
             LEFT JOIN proveedores prov ON prov.id = p.proveedor_id
@@ -325,6 +347,7 @@ async def listar_todos_productos(
             "existencias": r[13] or 0, "visible_en_sitio": r[14],
             "ubicaciones": r[15] or [],
             "fecha_ingreso": r[16],
+            "destacados": r[17],
         }
         for r in rows
     ]
@@ -353,3 +376,61 @@ async def descontinuar_producto(
 
     await conn.commit()
     return {"ok": True, "visible_en_sitio": False}
+
+
+# ---------------------------------------------------------------------------
+# Endpoints — Movimientos de inventario (restock)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/productos/{producto_id}/movimientos",
+    status_code=201,
+    response_model=MovimientoInventarioOut,
+)
+async def registrar_movimiento_inventario(
+    producto_id: int,
+    data: MovimientoInventarioCreate,
+    usuario: UsuarioActual = requiere_roles(*ROLES_ESCRITURA),
+    conn=Depends(get_db),
+):
+    """
+    Registra una entrada de inventario (restock) y suma la cantidad a
+    productos.existencias — ambas cosas en la misma transacción, para que
+    el desglose (movimientos_inventario) y el conteo actual (existencias)
+    nunca queden desincronizados.
+
+    fecha_ingreso del producto NO se toca aquí: sigue respondiendo
+    "¿cuándo entró este modelo al catálogo?", no "¿cuándo llegó el
+    último embarque?" — eso es exactamente lo que esta tabla registra.
+    """
+    fecha = data.fecha or date.today()
+
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "UPDATE productos SET existencias = existencias + %s WHERE id = %s RETURNING existencias",
+            (data.cantidad, producto_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+        nuevo_total = row[0]
+
+        await cur.execute(
+            """
+            INSERT INTO movimientos_inventario (producto_id, cantidad, fecha, ubicacion, usuario_id)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (producto_id, data.cantidad, fecha, data.ubicacion, usuario.id),
+        )
+        mov_id = (await cur.fetchone())[0]
+
+    await conn.commit()
+    return {
+        "id": mov_id,
+        "producto_id": producto_id,
+        "cantidad": data.cantidad,
+        "fecha": fecha,
+        "ubicacion": data.ubicacion,
+        "existencias_totales": nuevo_total,
+    }

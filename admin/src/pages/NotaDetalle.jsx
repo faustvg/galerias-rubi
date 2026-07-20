@@ -31,6 +31,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch, urlFoto } from '../api'
 import Layout from '../components/Layout'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 const COLOR_ESTATUS = {
   'Presupuesto': 'bg-gray-100 text-gray-600',
@@ -130,7 +131,9 @@ export default function NotaDetalle() {
       )}
 
       {/* ── Contenido principal ── */}
-      {!cargando && nota && <ContenidoNota nota={nota} usuario={usuario} puedeEscribir={puedeEscribir} />}
+      {!cargando && nota && (
+        <ContenidoNota nota={nota} usuario={usuario} puedeEscribir={puedeEscribir} navigate={navigate} />
+      )}
     </Layout>
   )
 }
@@ -138,7 +141,7 @@ export default function NotaDetalle() {
 
 // ── Contenido de la nota ─────────────────────────────────────────────────────
 // Separado en su propio componente para que el JSX sea legible.
-function ContenidoNota({ nota, usuario, puedeEscribir }) {
+function ContenidoNota({ nota, usuario, puedeEscribir, navigate }) {
   const colorEstatus = COLOR_ESTATUS[nota.estatus] ?? 'bg-gray-100 text-gray-600'
   const hayResta = Number(nota.resta) > 0
 
@@ -147,6 +150,34 @@ function ContenidoNota({ nota, usuario, puedeEscribir }) {
   const puedeEditar = puedeEscribir && (
     usuario?.rol !== 'worker' || nota.usuario_id === usuario?.id
   )
+
+  // Borrar es más peligroso que editar (registro financiero) — restringido
+  // a admin/superadmin únicamente, sin excepción para dueño de la nota
+  // (a diferencia de puedeEditar, un worker nunca puede borrar ni las suyas).
+  const puedeEliminar = ['superadmin', 'admin'].includes(usuario?.rol)
+
+  // ── Borrar nota ────────────────────────────────────────────────────────
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false)
+  const [eliminando, setEliminando]                   = useState(false)
+  const [errorEliminar, setErrorEliminar]             = useState(null)
+
+  async function handleEliminarNota() {
+    setEliminando(true)
+    setErrorEliminar(null)
+    try {
+      const res = await apiFetch(`/notas/${nota.folio}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail ?? 'No se pudo borrar la nota.')
+      }
+      navigate('/notas')
+    } catch (err) {
+      setErrorEliminar(err.message)
+      setConfirmandoEliminar(false)
+    } finally {
+      setEliminando(false)
+    }
+  }
 
   // ── Descarga de PDF ────────────────────────────────────────────────────────
   const [descargando, setDescargando] = useState(false)
@@ -387,7 +418,34 @@ function ContenidoNota({ nota, usuario, puedeEscribir }) {
             Editar nota
           </Link>
         )}
+
+        {/* Borrar — solo admin/superadmin. Es un registro financiero, así
+            que va detrás de un ConfirmDialog en vez de actuar al primer clic. */}
+        {puedeEliminar && (
+          <>
+            {errorEliminar && (
+              <p className="text-xs text-red-600 text-center">{errorEliminar}</p>
+            )}
+            <button
+              onClick={() => setConfirmandoEliminar(true)}
+              className="block w-full border border-red-200 text-red-600 text-sm font-medium
+                         py-3 rounded-xl hover:bg-red-50 transition-colors text-center"
+            >
+              Borrar nota
+            </button>
+          </>
+        )}
       </div>
+
+      {confirmandoEliminar && (
+        <ConfirmDialog
+          titulo="¿Borrar esta nota?"
+          mensaje={`Se borrará la nota ${nota.folio} junto con sus artículos y pagos registrados. Esta acción no se puede deshacer.`}
+          textoConfirmar={eliminando ? 'Borrando…' : 'Borrar'}
+          onConfirmar={handleEliminarNota}
+          onCancelar={() => setConfirmandoEliminar(false)}
+        />
+      )}
 
     </div>
   )

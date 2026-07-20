@@ -738,6 +738,37 @@ async def editar_nota(
 
 
 # ---------------------------------------------------------------------------
+# ENDPOINT — Borrar una nota (solo admin/superadmin)
+# ---------------------------------------------------------------------------
+# Es un registro financiero, así que a diferencia de los demás endpoints de
+# escritura (ROLES_ESCRITURA incluye worker) este se restringe a
+# superadmin/admin — worker y viewer no lo ven ni pueden dispararlo.
+#
+# partidas y pagos tienen ON DELETE CASCADE sobre folio_pedido (ver
+# schema.sql): se limpian solos, no hace falta borrarlos a mano ni una
+# migración nueva.
+# ---------------------------------------------------------------------------
+
+@router.delete("/notas/{folio}")
+async def eliminar_nota(
+    folio: str,
+    _usuario: UsuarioActual = requiere_roles("superadmin", "admin"),
+    conn=Depends(get_db),
+):
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "DELETE FROM notas WHERE folio = %s RETURNING folio", (folio,)
+        )
+        row = await cur.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+
+    await conn.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # ENDPOINT 5 — Generar PDF imprimible de una nota
 # ---------------------------------------------------------------------------
 # El PDF se genera en el backend (Python) con fpdf2, así funciona igual en

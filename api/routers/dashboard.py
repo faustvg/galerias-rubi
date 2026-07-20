@@ -541,14 +541,13 @@ async def historico_utilidad(
 # ---------------------------------------------------------------------------
 # GET /dashboard/ingresos-productos
 # ---------------------------------------------------------------------------
-# Cuántos productos NUEVOS entraron al catálogo por periodo (semana/mes),
-# opcionalmente filtrado por proveedor. Usa productos.fecha_ingreso — la
-# fecha en que el MODELO entró al catálogo, no reabastecimientos
-# posteriores (el restock solo suma existencias, no mueve fecha_ingreso).
-#
-# Productos sin fecha_ingreso (catálogo de antes de la migración 006) se
-# excluyen: no tiene sentido meterlos en un bucket de "fecha desconocida"
-# cuando la pregunta es "¿cuánto entró y cuándo?".
+# Cuántas UNIDADES de inventario entraron por periodo (semana/mes),
+# opcionalmente filtrado por proveedor. Usa movimientos_inventario (migración
+# 008), no productos.fecha_ingreso — fecha_ingreso solo marca la primera vez
+# que un MODELO entra al catálogo; movimientos_inventario tiene cada llegada
+# por separado con su propia cantidad, así que SUM(cantidad) da el historial
+# real de arribos, incluyendo restocks — que es justo lo que esta vista
+# necesita mostrar.
 # ---------------------------------------------------------------------------
 
 _AGRUPACION_A_TRUNC = {"semana": "week", "mes": "month"}
@@ -569,12 +568,13 @@ async def ingresos_productos(
 
     sql = f"""
         SELECT
-            date_trunc('{trunc_unit}', p.fecha_ingreso)::date AS periodo,
+            date_trunc('{trunc_unit}', m.fecha)::date AS periodo,
             COALESCE(prov.proveedor, 'Sin proveedor') AS proveedor,
-            COUNT(*) AS productos_nuevos
-        FROM  productos p
+            SUM(m.cantidad) AS unidades_ingresadas
+        FROM  movimientos_inventario m
+        JOIN  productos    p    ON p.id    = m.producto_id
         LEFT  JOIN proveedores prov ON prov.id = p.proveedor_id
-        WHERE p.fecha_ingreso IS NOT NULL
+        WHERE 1 = 1
     """
     params: list = []
     if proveedor_id is not None:
@@ -593,9 +593,9 @@ async def ingresos_productos(
 
     return [
         {
-            "periodo":          r[0].isoformat(),
-            "proveedor":        r[1],
-            "productos_nuevos": r[2],
+            "periodo":              r[0].isoformat(),
+            "proveedor":            r[1],
+            "unidades_ingresadas":  r[2],
         }
         for r in rows
     ]

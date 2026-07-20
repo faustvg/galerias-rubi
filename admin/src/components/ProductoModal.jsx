@@ -54,6 +54,7 @@ const FORM_VACÍO = {
   existencias:     '0',
   descuento_pct:   '',
   visible_en_sitio: true,
+  destacados:      false,
   ubicaciones:     [],   // array de strings — puede tener varias a la vez
   fecha_ingreso:   hoy(), // producto nuevo = hoy por defecto; editable para pedidos atrasados
 }
@@ -99,6 +100,7 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
         existencias:      producto.existencias?.toString() ?? '0',
         descuento_pct:    producto.descuento_pct?.toString() ?? '',
         visible_en_sitio: producto.visible_en_sitio ?? true,
+        destacados:       producto.destacados ?? false,
         ubicaciones:      producto.ubicaciones ?? [],
         // Productos de antes de la migración 006 pueden no tener fecha_ingreso
         // (fecha desconocida) — se deja vacío en vez de forzar la de hoy,
@@ -131,22 +133,34 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
     }))
   }
 
-  // --- Restock: sumar existencias sin crear un producto duplicado ---
-  // Cuando llega más stock de un modelo que YA está en el catálogo, la
-  // acción correcta es incrementar existencias en la fila existente — crear
-  // una fila nueva duplicaría el mueble en el sitio público.
+  // --- Restock: registra una entrada de inventario sin crear un producto
+  // duplicado. Cuando llega más stock de un modelo que YA está en el
+  // catálogo, la acción correcta es sumar a la fila existente — crear una
+  // fila nueva duplicaría el mueble en el sitio público.
   //
-  // Se guarda de inmediato (PUT directo), independiente del botón principal
-  // "Guardar cambios". Por eso, al terminar, actualizamos form.existencias
-  // con el nuevo total: si no lo hiciéramos, un "Guardar cambios" posterior
-  // reenviaría el valor VIEJO que cargó el modal al abrirse, pisando el
-  // restock que acabamos de guardar.
+  // Cada envío pega a POST /productos/{id}/movimientos, que en una sola
+  // transacción (a) inserta el renglón en movimientos_inventario (el
+  // desglose: cuánto llegó, cuándo, a qué ubicación) y (b) suma esa
+  // cantidad a productos.existencias — así el desglose y el total nunca
+  // se desincronizan. El servidor devuelve existencias_totales, que es la
+  // fuente de verdad; no la calculamos aquí para no arriesgar una carrera
+  // con otro restock hecho desde otra sesión.
   //
-  // fecha_ingreso NO se toca aquí a propósito: sigue respondiendo "¿cuándo
-  // entró este modelo al catálogo?", no "¿cuándo llegó el último embarque?".
-  const [cantidadRestock, setCantidadRestock] = useState('')
-  const [restockeando, setRestockeando]       = useState(false)
-  const [errorRestock, setErrorRestock]       = useState(null)
+  // Se guarda de inmediato, independiente del botón principal "Guardar
+  // cambios". Por eso, al terminar, actualizamos form.existencias con el
+  // total del servidor: si no lo hiciéramos, un "Guardar cambios"
+  // posterior reenviaría el valor VIEJO que cargó el modal al abrirse,
+  // pisando el restock que acabamos de guardar.
+  //
+  // fecha_ingreso del producto NO se toca aquí a propósito: sigue
+  // respondiendo "¿cuándo entró este modelo al catálogo?", no "¿cuándo
+  // llegó el último embarque?" — eso es justo lo que movimientos_inventario
+  // registra por separado.
+  const [cantidadRestock, setCantidadRestock]   = useState('')
+  const [fechaRestock, setFechaRestock]         = useState(hoy())
+  const [ubicacionRestock, setUbicacionRestock] = useState('')
+  const [restockeando, setRestockeando]         = useState(false)
+  const [errorRestock, setErrorRestock]         = useState(null)
 
   async function handleRestock() {
     const cantidad = parseInt(cantidadRestock)
@@ -155,17 +169,22 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
     setRestockeando(true)
     setErrorRestock(null)
     try {
-      const nuevoTotal = (parseInt(form.existencias) || 0) + cantidad
-      const res = await apiFetch(`/productos/${producto.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ existencias: nuevoTotal }),
+      const res = await apiFetch(`/productos/${producto.id}/movimientos`, {
+        method: 'POST',
+        body: JSON.stringify({
+          cantidad,
+          fecha: fechaRestock || null,
+          ubicacion: ubicacionRestock || null,
+        }),
       })
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.detail ?? 'No se pudo actualizar las existencias.')
+        throw new Error(data.detail ?? 'No se pudo registrar la entrada de inventario.')
       }
-      setForm((prev) => ({ ...prev, existencias: String(nuevoTotal) }))
+      setForm((prev) => ({ ...prev, existencias: String(data.existencias_totales) }))
       setCantidadRestock('')
+      setUbicacionRestock('')
+      setFechaRestock(hoy())
     } catch (err) {
       setErrorRestock(err.message)
     } finally {
@@ -214,6 +233,7 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
       existencias:      existencias,
       descuento_pct:    form.descuento_pct !== '' ? parseFloat(form.descuento_pct) : null,
       visible_en_sitio: form.visible_en_sitio,
+      destacados:       form.destacados,
       ubicaciones:      form.ubicaciones,
       fecha_ingreso:    form.fecha_ingreso || null,
     }
@@ -355,15 +375,16 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
           </Campo>
 
           {/* Restock rápido — solo al editar un producto que ya existe.
-              Suma existencias sin crear un producto duplicado (llegó más
-              stock del mismo modelo, no un modelo nuevo). Se guarda de
+              Registra una entrada de inventario (cantidad + fecha +
+              ubicación) sin crear un producto duplicado (llegó más stock
+              del mismo modelo, no un modelo nuevo). Se guarda de
               inmediato, independiente del botón "Guardar cambios". */}
           {producto && (
-            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-              <p className="text-xs font-medium text-gray-500 mb-2">
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-medium text-gray-500">
                 Llegó más stock de este mueble
               </p>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <input
                   type="number"
                   value={cantidadRestock}
@@ -371,21 +392,36 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
                   min="1"
                   step="1"
                   placeholder="Cantidad"
-                  className={`${inputCls} flex-1`}
+                  className={inputCls}
                 />
-                <button
-                  type="button"
-                  onClick={handleRestock}
-                  disabled={restockeando || !cantidadRestock}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-800 disabled:opacity-50
-                             text-white rounded-xl text-sm font-medium whitespace-nowrap
-                             transition-colors"
-                >
-                  {restockeando ? 'Guardando…' : '+ Agregar existencias'}
-                </button>
+                <input
+                  type="date"
+                  value={fechaRestock}
+                  onChange={(e) => setFechaRestock(e.target.value)}
+                  className={inputCls}
+                />
               </div>
+              <select
+                value={ubicacionRestock}
+                onChange={(e) => setUbicacionRestock(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">— Sin ubicación —</option>
+                {UBICACIONES_OPCIONES.map((ubi) => (
+                  <option key={ubi} value={ubi}>{ubi}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleRestock}
+                disabled={restockeando || !cantidadRestock}
+                className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-800 disabled:opacity-50
+                           text-white rounded-xl text-sm font-medium transition-colors"
+              >
+                {restockeando ? 'Guardando…' : '+ Agregar existencias'}
+              </button>
               {errorRestock && (
-                <p className="text-xs text-red-600 mt-1.5">{errorRestock}</p>
+                <p className="text-xs text-red-600">{errorRestock}</p>
               )}
             </div>
           )}
@@ -491,6 +527,26 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
               </span>
               <p className="text-xs text-gray-400">
                 Si lo desactivas, el producto no aparece en el sitio web.
+              </p>
+            </div>
+          </label>
+
+          {/* Destacado — marca manual de qué sale en "Lo más buscado" del
+              inicio del sitio. No es automático: si no se marca nada, la
+              sección simplemente no muestra nada ahí. */}
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.destacados}
+              onChange={cambiar('destacados')}
+              className="w-4 h-4 rounded accent-amber-600 shrink-0"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700">
+                Destacado en "Lo más buscado"
+              </span>
+              <p className="text-xs text-gray-400">
+                Aparece en la sección destacada del inicio del sitio público.
               </p>
             </div>
           </label>

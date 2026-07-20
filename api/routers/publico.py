@@ -76,6 +76,7 @@ class ProductoPublico(BaseModel):
     material:         Optional[str]
     descripcion:      Optional[str]
     precio_efectivo:  float   # precio_base con descuento aplicado; costo NUNCA sale
+    destacados:       bool    # marca manual del panel — filtra "Lo más buscado" en el sitio
 
 
 class CategoriaPublica(BaseModel):
@@ -109,7 +110,8 @@ _SQL_BASE = """
             p.precio_base
             * (1.0 - COALESCE(p.descuento_pct, c.descuento_pct, 0) / 100.0),
             2
-        ) AS precio_efectivo
+        ) AS precio_efectivo,
+        p.destacados
     FROM  productos   p
     LEFT  JOIN categorias c ON c.id = p.categoria_id
     WHERE p.visible_en_sitio = true
@@ -127,6 +129,7 @@ def _fila_a_producto(r) -> dict:
         "material":        r[6],
         "descripcion":     r[7],
         "precio_efectivo": float(r[8] or 0),
+        "destacados":      r[9],
     }
 
 

@@ -302,16 +302,22 @@
       line-height: 1.75;
     }
 
-    /* ── DESTACADOS (Inicio featured) ── */
+    /* ── DESTACADOS (Inicio featured) ──
+       Sección deliberadamente compacta: es un adelanto de "lo más buscado",
+       no una segunda vitrina — la colección completa vive más abajo. Grid
+       de 3 columnas iguales (sin el tile grande asimétrico de antes) y
+       aspect-ratio 4/3 en vez de 1/1 para que las tarjetas se vean más
+       bajas. */
     #destacados {
       background: var(--white);
+      padding: 4.5rem 5vw;
     }
 
     .destacados-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      margin-bottom: 3.5rem;
+      margin-bottom: 2.2rem;
       flex-wrap: wrap;
       gap: 1rem;
     }
@@ -319,25 +325,20 @@
     .featured-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 2px;
+      gap: 1.2rem;
     }
 
     .featured-card {
       position: relative;
       overflow: hidden;
       cursor: pointer;
-    }
-    .featured-card:first-child {
-      grid-row: span 2;
+      display: block;
     }
 
     .featured-card-img {
-      aspect-ratio: 1/1;
+      aspect-ratio: 4/3;
       overflow: hidden;
-    }
-    .featured-card:first-child .featured-card-img {
-      aspect-ratio: unset;
-      height: 100%;
+      background: var(--bg);
     }
 
     .featured-card-img img {
@@ -348,23 +349,23 @@
     }
 
     .featured-card-info {
-      padding: 1.1rem 0 .3rem;
+      padding: .8rem 0 .2rem;
     }
     .featured-card-info h3 {
       font-family: var(--serif);
-      font-size: 1.15rem;
+      font-size: 1.05rem;
       font-weight: 400;
       margin-bottom: .2rem;
     }
-    .featured-card-info a {
-      font-size: .75rem;
+    .featured-card-info span {
+      font-size: .72rem;
       letter-spacing: .12em;
       text-transform: uppercase;
       color: var(--accent1);
       border-bottom: 1px solid transparent;
       transition: border-color .2s, color .2s;
     }
-    .featured-card-info a:hover { color: var(--btn); border-color: var(--btn); }
+    .featured-card:hover .featured-card-info span { color: var(--btn); border-color: var(--btn); }
 
     /* ── ABOUT STRIP ── */
     #nosotros {
@@ -832,7 +833,6 @@
     /* ── RESPONSIVE ── */
     @media (max-width: 900px) {
       .featured-grid { grid-template-columns: 1fr 1fr; }
-      .featured-card:first-child { grid-row: auto; }
       .proceso-steps { grid-template-columns: 1fr 1fr; }
       #nosotros, .amedida-showcase, #contacto { grid-template-columns: 1fr; }
       .about-img { aspect-ratio: 16/9; }
@@ -943,8 +943,11 @@
   </div>
 </section>
 
-<!-- ══════════ DESTACADOS ══════════ -->
-<section id="destacados">
+<!-- ══════════ DESTACADOS ══════════
+     Oculta por defecto (style="display:none") hasta que el JS confirme que
+     hay al menos un producto marcado destacado=true — así nunca se ve una
+     sección vacía si nadie ha marcado nada todavía desde el panel. -->
+<section id="destacados" style="display:none;">
   <div class="destacados-header">
     <div>
       <p class="section-label">Lo más buscado</p>
@@ -953,34 +956,8 @@
     <a href="#coleccion" class="btn btn-outline" style="font-size:.75rem;padding:.7rem 1.6rem;">Ver colección completa</a>
   </div>
 
-  <div class="featured-grid">
-    <div class="featured-card">
-      <div class="featured-card-img">
-        <img src="https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80" alt="Sala de madera maciza parota" />
-      </div>
-      <div class="featured-card-info">
-        <h3>Sala Parota Natural</h3>
-        <a href="#contacto">Ver detalles</a>
-      </div>
-    </div>
-    <div class="featured-card">
-      <div class="featured-card-img">
-        <img src="https://images.unsplash.com/photo-1604578762246-41134e37f9cc?w=800&q=80" alt="Comedor de madera de parota" />
-      </div>
-      <div class="featured-card-info">
-        <h3>Comedor 8 Sillas</h3>
-        <a href="#contacto">Ver detalles</a>
-      </div>
-    </div>
-    <div class="featured-card">
-      <div class="featured-card-img">
-        <img src="https://images.unsplash.com/photo-1616627577385-322c6671d5dd?w=800&q=80" alt="Ropero de pino tallado" />
-      </div>
-      <div class="featured-card-info">
-        <h3>Ropero Tallado Pino</h3>
-        <a href="#contacto">Ver detalles</a>
-      </div>
-    </div>
+  <div class="featured-grid" id="featured-grid">
+    <!-- Tarjetas inyectadas por JS a partir de /publico/productos filtrado a destacados=true -->
   </div>
 </section>
 
@@ -1316,10 +1293,77 @@
     }).join('')
   }
 
+  // Refleja la categoría activa en la URL (?categoria=ID) sin recargar la
+  // página. replaceState (no pushState): un clic en un tab no debe apilar
+  // una entrada de historial por cada filtro — solo queremos que la URL
+  // ACTUAL sea correcta para que "atrás" desde producto.html regrese aquí
+  // con el filtro correcto ya aplicado al cargar.
+  function _actualizarURLCategoria(filtro) {
+    const url = new URL(location.href)
+    if (filtro === null) {
+      url.searchParams.delete('categoria')
+    } else {
+      url.searchParams.set('categoria', filtro)
+    }
+    history.replaceState(null, '', url)
+  }
+
   function filterCatalog(filtro, btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     renderCatalog(filtro)
+    _actualizarURLCategoria(filtro)
+  }
+
+  /* ── "Lo más buscado" — curado a mano desde el panel (productos.destacados),
+     no automático. Si nadie marcó nada todavía, la sección completa se
+     queda oculta (ver display:none en el <section> del HTML) en vez de
+     mostrar una vitrina vacía. ── */
+  function renderDestacados() {
+    const section = document.getElementById('destacados')
+    const grid     = document.getElementById('featured-grid')
+    const items = allProducts.filter(p => p.destacados)
+
+    if (items.length === 0) {
+      section.style.display = 'none'
+      return
+    }
+    section.style.display = ''
+
+    grid.innerHTML = items.map(p => {
+      const src = fotoUrl(p.fotos?.[0])
+      const img = src
+        ? `<img src="${src}" alt="${esc(p.nombre)}" loading="lazy" />`
+        : `<div class="foto-placeholder" aria-hidden="true"></div>`
+      return `
+        <a class="featured-card" href="producto.html?id=${p.id}">
+          <div class="featured-card-img">${img}</div>
+          <div class="featured-card-info">
+            <h3>${esc(p.nombre)}</h3>
+            <span>Ver detalles →</span>
+          </div>
+        </a>`
+    }).join('')
+  }
+
+  // Al cargar la página, si la URL trae ?categoria=ID (ej. al volver desde
+  // producto.html con el botón "atrás", o desde un enlace compartido),
+  // aplica ese filtro en vez del default "Todos". Si el id no corresponde
+  // a ningún tab renderizado (categoría sin productos visibles, o id
+  // inválido), simplemente se queda en "Todos" — ya está activo por
+  // defecto desde renderTabs.
+  function _aplicarFiltroInicial() {
+    const idParam = new URLSearchParams(location.search).get('categoria')
+    // Solo dígitos: los id de categoría son enteros — descarta cualquier
+    // otra cosa antes de meterla en un selector CSS.
+    if (idParam && /^\d+$/.test(idParam)) {
+      const btn = document.querySelector(`.tab-btn[data-filtro="${idParam}"]`)
+      if (btn) {
+        filterCatalog(Number(idParam), btn)
+        return
+      }
+    }
+    renderCatalog(null)
   }
 
   /* ── carga inicial desde la API ── */
@@ -1336,7 +1380,8 @@
       const [categorias, productos] = await Promise.all([resCats.json(), resProds.json()])
       allProducts = productos
       renderTabs(categorias)
-      renderCatalog(null)
+      _aplicarFiltroInicial()
+      renderDestacados()
     } catch {
       grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--accent1);padding:3rem 0;font-size:.85rem;">No se pudo cargar el catálogo. Por favor intenta más tarde.</p>'
     }

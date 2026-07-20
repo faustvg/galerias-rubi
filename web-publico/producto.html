@@ -103,13 +103,30 @@
        object-fit: contain (no cover): un sofá y un ropero tienen
        proporciones muy distintas — forzar un cuadrado 1:1 recortaba
        ambos. El lienzo crece con el viewport (clamp) y deja que cada
-       foto respete su propia forma, como una vitrina. */
+       foto respete su propia forma, como una vitrina.
+
+       El fondo NO es var(--white) — esa crema clara, sobre el fondo más
+       oscuro de la página (var(--bg)), se veía como un borde blanco
+       encendido alrededor de cualquier foto que no llenara el lienzo por
+       completo (el "white border bug"). El degradado radial usa var(--bg)
+       en los bordes — se funde con la página sin costura — y un tono
+       apenas más claro al centro, solo para dar algo de profundidad; la
+       sombra cálida es lo que separa la foto de la página como una pieza
+       en vitrina, no el contraste de color. */
     .producto-galeria { position: sticky; top: 110px; }
     .galeria-principal {
       position: relative;
-      height: clamp(420px, 44vw, 640px);
+      /* 3:2 en vez de una altura fija — está mucho más cerca de la
+         proporción real de las fotos (la mayoría 16:9-ish), así las
+         franjas del degradado quedan delgadas en vez de dominar el
+         lienzo. Una foto vertical (ej. un ropero) queda con franjas a
+         los lados en lugar de arriba/abajo — incluso ahí se ve como una
+         pieza centrada en una vitrina, no como un hueco vacío. */
+      aspect-ratio: 3 / 2;
+      max-height: 680px;
       overflow: hidden;
-      background: var(--white);
+      background: radial-gradient(140% 100% at 50% 45%, #EDE7DB 0%, var(--bg) 100%);
+      box-shadow: 0 28px 56px -24px rgba(46,30,20,.32);
       cursor: zoom-in;
     }
     .galeria-principal img {
@@ -151,7 +168,7 @@
       cursor: pointer;
       border: 2px solid transparent;
       opacity: .5;
-      background: var(--white);
+      background: var(--bg);
       transition: opacity .2s, border-color .2s;
       flex-shrink: 0;
     }
@@ -319,7 +336,7 @@
     @media (max-width: 900px) {
       .producto-layout  { grid-template-columns: 1fr; }
       .producto-galeria { position: static; }
-      .galeria-principal { height: clamp(320px, 90vw, 480px); }
+      .galeria-principal { aspect-ratio: 4 / 3; max-height: none; }
       .footer-top       { grid-template-columns: 1fr 1fr; }
       .footer-brand     { grid-column: 1 / -1; }
     }
@@ -597,6 +614,17 @@
   function renderProducto(p) {
     document.title = `${p.nombre} — Muebles Rubí`
     nombreProducto = p.nombre
+
+    // Todos los enlaces "Colección" (header, menú móvil, breadcrumb, botón
+    // "Ver más muebles") deben regresar a la MISMA categoría que este
+    // producto, no al catálogo sin filtrar — así "atrás" desde un producto
+    // filtrado no pierde el filtro. Si el producto no tiene categoría,
+    // se dejan apuntando al catálogo completo (comportamiento anterior).
+    if (p.categoria_id) {
+      const destino = `index.html?categoria=${p.categoria_id}#coleccion`
+      document.querySelectorAll('a[href="index.html#coleccion"]')
+        .forEach(a => { a.href = destino })
+    }
 
     // Breadcrumb
     document.getElementById('bc-nombre').textContent = p.nombre
