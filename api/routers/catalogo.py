@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Optional
 
 import psycopg.errors
@@ -96,6 +96,21 @@ class MovimientoInventarioOut(BaseModel):
     fecha: date
     ubicacion: Optional[str] = None
     existencias_totales: int   # productos.existencias después de sumar este movimiento
+
+
+class MovimientoInventarioItem(BaseModel):
+    """Una fila del historial (GET) — a diferencia de MovimientoInventarioOut
+    (la respuesta del POST), no lleva existencias_totales: ese número es el
+    total ACTUAL del producto, no algo que tenga sentido repetir en cada
+    renglón de un historial."""
+    id: int
+    producto_id: int
+    cantidad: int
+    fecha: date
+    ubicacion: Optional[str] = None
+    usuario_id: Optional[int] = None
+    nombre_usuario: Optional[str] = None   # join de usuarios — quién lo registró
+    creado_en: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -434,3 +449,48 @@ async def registrar_movimiento_inventario(
         "ubicacion": data.ubicacion,
         "existencias_totales": nuevo_total,
     }
+
+
+@router.get(
+    "/productos/{producto_id}/movimientos",
+    response_model=list[MovimientoInventarioItem],
+)
+async def listar_movimientos_inventario(
+    producto_id: int,
+    _usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    """
+    Historial de entradas de inventario de un producto, más reciente primero.
+    Cualquier rol autenticado puede leerlo — es solo lectura, mismo criterio
+    de acceso que /admin/productos.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "SELECT id FROM productos WHERE id = %s", (producto_id,)
+        )
+        if await cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+        await cur.execute(
+            """
+            SELECT
+                m.id, m.producto_id, m.cantidad, m.fecha, m.ubicacion,
+                m.usuario_id, u.nombre AS nombre_usuario, m.creado_en
+            FROM  movimientos_inventario m
+            LEFT  JOIN usuarios u ON u.id = m.usuario_id
+            WHERE m.producto_id = %s
+            ORDER BY m.fecha DESC, m.id DESC
+            """,
+            (producto_id,),
+        )
+        rows = await cur.fetchall()
+
+    return [
+        {
+            "id": r[0], "producto_id": r[1], "cantidad": r[2], "fecha": r[3],
+            "ubicacion": r[4], "usuario_id": r[5], "nombre_usuario": r[6],
+            "creado_en": r[7],
+        }
+        for r in rows
+    ]

@@ -34,6 +34,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../api'
 import GaleriaFotos from './GaleriaFotos'
+import HistorialStock from './HistorialStock'
 
 // Valores iniciales del formulario vacío
 // Las cuatro ubicaciones físicas del negocio (etiquetas, no conteos)
@@ -133,64 +134,14 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
     }))
   }
 
-  // --- Restock: registra una entrada de inventario sin crear un producto
-  // duplicado. Cuando llega más stock de un modelo que YA está en el
-  // catálogo, la acción correcta es sumar a la fila existente — crear una
-  // fila nueva duplicaría el mueble en el sitio público.
-  //
-  // Cada envío pega a POST /productos/{id}/movimientos, que en una sola
-  // transacción (a) inserta el renglón en movimientos_inventario (el
-  // desglose: cuánto llegó, cuándo, a qué ubicación) y (b) suma esa
-  // cantidad a productos.existencias — así el desglose y el total nunca
-  // se desincronizan. El servidor devuelve existencias_totales, que es la
-  // fuente de verdad; no la calculamos aquí para no arriesgar una carrera
-  // con otro restock hecho desde otra sesión.
-  //
-  // Se guarda de inmediato, independiente del botón principal "Guardar
-  // cambios". Por eso, al terminar, actualizamos form.existencias con el
-  // total del servidor: si no lo hiciéramos, un "Guardar cambios"
-  // posterior reenviaría el valor VIEJO que cargó el modal al abrirse,
-  // pisando el restock que acabamos de guardar.
-  //
-  // fecha_ingreso del producto NO se toca aquí a propósito: sigue
-  // respondiendo "¿cuándo entró este modelo al catálogo?", no "¿cuándo
-  // llegó el último embarque?" — eso es justo lo que movimientos_inventario
-  // registra por separado.
-  const [cantidadRestock, setCantidadRestock]   = useState('')
-  const [fechaRestock, setFechaRestock]         = useState(hoy())
-  const [ubicacionRestock, setUbicacionRestock] = useState('')
-  const [restockeando, setRestockeando]         = useState(false)
-  const [errorRestock, setErrorRestock]         = useState(null)
-
-  async function handleRestock() {
-    const cantidad = parseInt(cantidadRestock)
-    if (isNaN(cantidad) || cantidad <= 0) return
-
-    setRestockeando(true)
-    setErrorRestock(null)
-    try {
-      const res = await apiFetch(`/productos/${producto.id}/movimientos`, {
-        method: 'POST',
-        body: JSON.stringify({
-          cantidad,
-          fecha: fechaRestock || null,
-          ubicacion: ubicacionRestock || null,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data.detail ?? 'No se pudo registrar la entrada de inventario.')
-      }
-      setForm((prev) => ({ ...prev, existencias: String(data.existencias_totales) }))
-      setCantidadRestock('')
-      setUbicacionRestock('')
-      setFechaRestock(hoy())
-    } catch (err) {
-      setErrorRestock(err.message)
-    } finally {
-      setRestockeando(false)
-    }
-  }
+  // --- Historial de stock: registrar entradas de inventario (restock) sin
+  // crear un producto duplicado vive en su propio panel (HistorialStock),
+  // no como bloque permanente aquí. Solo guardamos si está abierto y, al
+  // registrar un movimiento ahí, sincronizamos form.existencias con el
+  // total que devuelve el servidor — si no lo hiciéramos, un "Guardar
+  // cambios" posterior reenviaría el valor VIEJO que cargó el modal al
+  // abrirse, pisando el restock que se acaba de guardar en el panel.
+  const [historialAbierto, setHistorialAbierto] = useState(false)
 
   // --- Validación y envío ---
   async function handleSubmit(e) {
@@ -270,7 +221,8 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
   }
 
   return (
-    // Overlay oscuro — clic fuera cierra el modal
+    <>
+    {/* Overlay oscuro — clic fuera cierra el modal */}
     <div
       className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50"
       onClick={onCerrar}
@@ -374,56 +326,20 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
             />
           </Campo>
 
-          {/* Restock rápido — solo al editar un producto que ya existe.
-              Registra una entrada de inventario (cantidad + fecha +
-              ubicación) sin crear un producto duplicado (llegó más stock
-              del mismo modelo, no un modelo nuevo). Se guarda de
-              inmediato, independiente del botón "Guardar cambios". */}
+          {/* Historial de stock — solo al editar un producto que ya existe
+              (necesita su id). Abre un panel aparte con la tabla de
+              movimientos y el formulario para agregar uno nuevo. */}
           {producto && (
-            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 space-y-2">
-              <p className="text-xs font-medium text-gray-500">
-                Llegó más stock de este mueble
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="number"
-                  value={cantidadRestock}
-                  onChange={(e) => setCantidadRestock(e.target.value)}
-                  min="1"
-                  step="1"
-                  placeholder="Cantidad"
-                  className={inputCls}
-                />
-                <input
-                  type="date"
-                  value={fechaRestock}
-                  onChange={(e) => setFechaRestock(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-              <select
-                value={ubicacionRestock}
-                onChange={(e) => setUbicacionRestock(e.target.value)}
-                className={inputCls}
-              >
-                <option value="">— Sin ubicación —</option>
-                {UBICACIONES_OPCIONES.map((ubi) => (
-                  <option key={ubi} value={ubi}>{ubi}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={handleRestock}
-                disabled={restockeando || !cantidadRestock}
-                className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-800 disabled:opacity-50
-                           text-white rounded-xl text-sm font-medium transition-colors"
-              >
-                {restockeando ? 'Guardando…' : '+ Agregar existencias'}
-              </button>
-              {errorRestock && (
-                <p className="text-xs text-red-600">{errorRestock}</p>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => setHistorialAbierto(true)}
+              className="w-full flex items-center justify-between px-3 py-2.5
+                         bg-gray-50 border border-gray-100 rounded-xl text-sm
+                         font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <span>Ver historial de stock</span>
+              <span className="text-gray-400">→</span>
+            </button>
           )}
 
           {/* Fecha de ingreso al catálogo — para ver altas de inventario en el
@@ -637,6 +553,18 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
 
       </div>
     </div>
+
+    {/* Historial de stock — panel aparte, por encima del modal de producto */}
+    {historialAbierto && (
+      <HistorialStock
+        productoId={producto.id}
+        onExistenciasActualizadas={(nuevoTotal) =>
+          setForm((prev) => ({ ...prev, existencias: String(nuevoTotal) }))
+        }
+        onCerrar={() => setHistorialAbierto(false)}
+      />
+    )}
+    </>
   )
 }
 
