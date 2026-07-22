@@ -36,28 +36,29 @@ import { apiFetch } from '../api'
 import GaleriaFotos from './GaleriaFotos'
 import HistorialStock from './HistorialStock'
 
-// Valores iniciales del formulario vacío
-// Las cuatro ubicaciones físicas del negocio (etiquetas, no conteos)
-const UBICACIONES_OPCIONES = ['Local Mexico', 'Local Jose', 'Local Amarillo', 'Almacen']
-
-// Fecha de hoy en formato YYYY-MM-DD (el que espera <input type="date">)
-const hoy = () => new Date().toISOString().slice(0, 10)
+const formatFechaCorta = (fecha) =>
+  fecha
+    ? new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', {
+        day: 'numeric', month: 'short', year: 'numeric',
+      })
+    : '—'
 
 const FORM_VACÍO = {
   nombre:          '',
   categoria_id:    '',   // '' = "sin categoría" en el select
-  proveedor_id:    '',
+  proveedor_id:    '',   // proveedor por defecto del catálogo — solo se fija al crear
   color:           '',
   material:        '',
   descripcion:     '',
   precio_base:     '',
   costo:           '0',
-  existencias:     '0',
   descuento_pct:   '',
   visible_en_sitio: true,
   destacados:      false,
-  ubicaciones:     [],   // array de strings — puede tener varias a la vez
-  fecha_ingreso:   hoy(), // producto nuevo = hoy por defecto; editable para pedidos atrasados
+  // existencias, fecha_ingreso y ubicaciones NO viven aquí: son derivados
+  // de movimientos_inventario (migración 010) y ya no se capturan al
+  // crear — un producto nuevo arranca en existencias=0 / sin ubicaciones,
+  // y su primera entrada se agrega desde "Editar stock" una vez creado.
 }
 
 export default function ProductoModal({ producto, onGuardado, onCerrar }) {
@@ -98,15 +99,17 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
         descripcion:      producto.descripcion      ?? '',
         precio_base:      producto.precio_base?.toString() ?? '',
         costo:            producto.costo?.toString() ?? '0',
-        existencias:      producto.existencias?.toString() ?? '0',
         descuento_pct:    producto.descuento_pct?.toString() ?? '',
         visible_en_sitio: producto.visible_en_sitio ?? true,
         destacados:       producto.destacados ?? false,
+        // existencias, fecha_ingreso y ubicaciones: SOLO lectura aquí
+        // (derivados vía trigger, migración 010). Se muestran para
+        // contexto y se mantienen frescos por el callback de "Editar
+        // stock" — nunca se mandan de vuelta al servidor desde este
+        // formulario.
+        existencias:      producto.existencias ?? 0,
+        fecha_ingreso:    producto.fecha_ingreso ?? null,
         ubicaciones:      producto.ubicaciones ?? [],
-        // Productos de antes de la migración 006 pueden no tener fecha_ingreso
-        // (fecha desconocida) — se deja vacío en vez de forzar la de hoy,
-        // que sería falsa. El admin puede llenarla a mano si la conoce.
-        fecha_ingreso:    producto.fecha_ingreso ?? '',
       })
     } else {
       setForm(FORM_VACÍO)
@@ -123,24 +126,13 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
     }
   }
 
-  // Handler especial para el array de ubicaciones:
-  // si ya está en el array la quita, si no la agrega.
-  function cambiarUbicacion(ubi) {
-    setForm((prev) => ({
-      ...prev,
-      ubicaciones: prev.ubicaciones.includes(ubi)
-        ? prev.ubicaciones.filter((u) => u !== ubi)
-        : [...prev.ubicaciones, ubi],
-    }))
-  }
-
-  // --- Historial de stock: registrar entradas de inventario (restock) sin
-  // crear un producto duplicado vive en su propio panel (HistorialStock),
-  // no como bloque permanente aquí. Solo guardamos si está abierto y, al
-  // registrar un movimiento ahí, sincronizamos form.existencias con el
-  // total que devuelve el servidor — si no lo hiciéramos, un "Guardar
-  // cambios" posterior reenviaría el valor VIEJO que cargó el modal al
-  // abrirse, pisando el restock que se acaba de guardar en el panel.
+  // --- Editar stock: agregar/editar/borrar entradas de inventario vive en
+  // su propio panel (HistorialStock), no como bloque permanente aquí. Al
+  // cerrar cualquier cambio ahí, sincronizamos form.existencias/
+  // fecha_ingreso con lo que devuelve el servidor — si no lo hiciéramos,
+  // un "Guardar cambios" posterior mostraría (aunque no reenviaría, ya
+  // que este formulario ya no manda esos campos) el valor VIEJO que cargó
+  // el modal al abrirse.
   const [historialAbierto, setHistorialAbierto] = useState(false)
 
   // --- Validación y envío ---
@@ -164,14 +156,12 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
       setError('El costo debe ser un número mayor o igual a 0.')
       return
     }
-    const existencias = parseInt(form.existencias)
-    if (isNaN(existencias) || existencias < 0) {
-      setError('Las existencias deben ser un número mayor o igual a 0.')
-      return
-    }
 
     // Construir el payload que irá al API.
     // Los campos vacíos opcionales se mandan como null (no como '').
+    // existencias, fecha_ingreso y ubicaciones NO van aquí — son derivados
+    // de movimientos_inventario (migración 010); el backend ya ni siquiera
+    // acepta esos campos en este endpoint.
     const payload = {
       nombre:           form.nombre.trim(),
       categoria_id:     form.categoria_id  ? parseInt(form.categoria_id)    : null,
@@ -181,12 +171,9 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
       descripcion:      form.descripcion.trim() || null,
       precio_base:      precio,
       costo:            costo,
-      existencias:      existencias,
       descuento_pct:    form.descuento_pct !== '' ? parseFloat(form.descuento_pct) : null,
       visible_en_sitio: form.visible_en_sitio,
       destacados:       form.destacados,
-      ubicaciones:      form.ubicaciones,
-      fecha_ingreso:    form.fecha_ingreso || null,
     }
 
     setGuardando(true)
@@ -219,6 +206,12 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
       setGuardando(false)
     }
   }
+
+  // Nombre del proveedor por defecto, para el resumen de solo lectura
+  // del bloque "Stock" — form.proveedor_id es el id como string.
+  const nombreProveedor = proveedores.find(
+    (p) => p.id === Number(form.proveedor_id)
+  )?.proveedor
 
   return (
     <>
@@ -314,45 +307,68 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
             return null
           })()}
 
-          <Campo label="Existencias">
-            <input
-              type="number"
-              value={form.existencias}
-              onChange={cambiar('existencias')}
-              min="0"
-              step="1"
-              placeholder="0"
-              className={inputCls}
-            />
-          </Campo>
-
-          {/* Historial de stock — solo al editar un producto que ya existe
-              (necesita su id). Abre un panel aparte con la tabla de
-              movimientos y el formulario para agregar uno nuevo. */}
-          {producto && (
-            <button
-              type="button"
-              onClick={() => setHistorialAbierto(true)}
-              className="w-full flex items-center justify-between px-3 py-2.5
-                         bg-gray-50 border border-gray-100 rounded-xl text-sm
-                         font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              <span>Ver historial de stock</span>
-              <span className="text-gray-400">→</span>
-            </button>
+          {/* ── Stock ─────────────────────────────────────────────────────────
+              Existencias, fecha de ingreso, ubicaciones y proveedor por
+              defecto YA NO se editan aquí (migración 010: existencias/
+              fecha_ingreso/ubicaciones quedan derivados de
+              movimientos_inventario vía trigger, y proveedor se fija una
+              sola vez al crear, no en cada edición). Al editar, se
+              muestran de solo lectura y la edición real vive en el panel
+              "Editar stock" — la ubicación se elige ahí, una vez por
+              movimiento, no como una lista aparte aquí. Al crear, todavía
+              no hay historial de stock — solo se elige el proveedor por
+              defecto del catálogo. */}
+          {producto ? (
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 mb-1">Stock</p>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Existencias</span>
+                <span className="font-semibold text-gray-900">{form.existencias}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Fecha de ingreso</span>
+                <span className="font-medium text-gray-700">{formatFechaCorta(form.fecha_ingreso)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm gap-3">
+                <span className="text-gray-500 shrink-0">Ubicaciones</span>
+                <span className="font-medium text-gray-700 text-right">
+                  {form.ubicaciones?.length > 0 ? form.ubicaciones.join(', ') : '—'}
+                </span>
+              </div>
+              {nombreProveedor && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Proveedor</span>
+                  <span className="font-medium text-gray-700">{nombreProveedor}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setHistorialAbierto(true)}
+                className="w-full mt-1.5 flex items-center justify-between px-3 py-2
+                           bg-white border border-gray-200 rounded-lg text-sm
+                           font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <span>Editar stock</span>
+                <span className="text-gray-400">→</span>
+              </button>
+            </div>
+          ) : (
+            <Campo label="Proveedor">
+              <select
+                value={form.proveedor_id}
+                onChange={cambiar('proveedor_id')}
+                className={inputCls}
+              >
+                <option value="">— Sin proveedor —</option>
+                {proveedores.map((p) => (
+                  <option key={p.id} value={p.id}>{p.proveedor}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1.5">
+                Podrás agregar existencias después de crear el producto.
+              </p>
+            </Campo>
           )}
-
-          {/* Fecha de ingreso al catálogo — para ver altas de inventario en el
-              tiempo. Vacía = fecha desconocida (producto de antes de llevar
-              este registro); editable para poder capturar entradas atrasadas. */}
-          <Campo label="Fecha de ingreso al catálogo">
-            <input
-              type="date"
-              value={form.fecha_ingreso}
-              onChange={cambiar('fecha_ingreso')}
-              className={inputCls}
-            />
-          </Campo>
 
           {/* Categoría */}
           <Campo label="Categoría">
@@ -364,20 +380,6 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
               <option value="">— Sin categoría —</option>
               {categorias.map((c) => (
                 <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </select>
-          </Campo>
-
-          {/* Proveedor */}
-          <Campo label="Proveedor">
-            <select
-              value={form.proveedor_id}
-              onChange={cambiar('proveedor_id')}
-              className={inputCls}
-            >
-              <option value="">— Sin proveedor —</option>
-              {proveedores.map((p) => (
-                <option key={p.id} value={p.id}>{p.proveedor}</option>
               ))}
             </select>
           </Campo>
@@ -467,33 +469,6 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
             </div>
           </label>
 
-          {/* ── Ubicaciones ─────────────────────────────────────────────────
-               Array de strings — se puede marcar más de una a la vez.
-               No es un conteo por ubicación; solo indica en qué locales
-               está físicamente el producto (etiqueta informativa). */}
-          <Campo label="Ubicaciones">
-            <div className="flex flex-wrap gap-2 pt-1">
-              {UBICACIONES_OPCIONES.map((ubi) => {
-                const activa = form.ubicaciones.includes(ubi)
-                return (
-                  <button
-                    key={ubi}
-                    type="button"
-                    onClick={() => cambiarUbicacion(ubi)}
-                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium
-                                transition-colors ${
-                      activa
-                        ? 'bg-amber-600 border-amber-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-600 hover:border-amber-400'
-                    }`}
-                  >
-                    {activa ? '✓ ' : ''}{ubi}
-                  </button>
-                )
-              })}
-            </div>
-          </Campo>
-
           {/* ── Fotos ── */}
           <hr className="border-gray-100" />
 
@@ -554,12 +529,13 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
       </div>
     </div>
 
-    {/* Historial de stock — panel aparte, por encima del modal de producto */}
+    {/* Editar stock — panel aparte, por encima del modal de producto */}
     {historialAbierto && (
       <HistorialStock
         productoId={producto.id}
-        onExistenciasActualizadas={(nuevoTotal) =>
-          setForm((prev) => ({ ...prev, existencias: String(nuevoTotal) }))
+        proveedores={proveedores}
+        onProductoActualizado={({ existencias, fecha_ingreso, ubicaciones }) =>
+          setForm((prev) => ({ ...prev, existencias, fecha_ingreso, ubicaciones }))
         }
         onCerrar={() => setHistorialAbierto(false)}
       />

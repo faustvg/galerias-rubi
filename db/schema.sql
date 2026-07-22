@@ -63,13 +63,24 @@ CREATE TABLE proveedores (
 --      a medida quedan en 0.
 --    visible_en_sitio: controla qué sale al productos.json público.
 --    categoria_id / proveedor_id quedan NULLABLE a propósito:
---      una pieza a medida puede no tener proveedor.
---    fecha_ingreso (NUEVO, migración 006) = cuándo entra la pieza al
---      catálogo, para ver altas de inventario a lo largo del tiempo.
---      DEFAULT CURRENT_DATE aquí porque este archivo es la foto para
---      una base NUEVA (sin filas viejas que falsear); en producción,
---      la migración 006 la agrega SIN default primero para no
---      backfillear piezas viejas con la fecha de hoy.
+--      una pieza a medida puede no tener proveedor. proveedor_id aquí es
+--      el proveedor POR DEFECTO del catálogo (se fija al crear el
+--      producto) — distinto de movimientos_inventario.proveedor_id, que
+--      es de quién vino CADA entrada de stock (pueden diferir entre sí).
+--    fecha_ingreso (migración 006) = cuándo entra la pieza al catálogo,
+--      para ver altas de inventario a lo largo del tiempo.
+--      DERIVADO (migración 010, ver sección 8): desde que existen
+--      movimientos_inventario editables/borrables, esta columna la
+--      mantiene un trigger — es la fecha del movimiento más antiguo del
+--      producto. La app NUNCA la escribe directamente; el DEFAULT
+--      CURRENT_DATE de aquí abajo solo cubre el instante entre crear el
+--      producto y registrar su primer movimiento.
+--    ubicaciones = en qué locales físicos está el producto. DERIVADO
+--      (migración 010, ver sección 8) igual que fecha_ingreso: el trigger
+--      lo recalcula como el conjunto de ubicaciones DISTINTAS entre todos
+--      los movimientos del producto. Ya no se elige a mano en el
+--      formulario del producto — se captura una vez por movimiento en
+--      "Editar stock".
 --    destacados (NUEVO, migración 009) = marca manual de qué productos
 --      aparecen en "Lo más buscado" del sitio público. Manual, no
 --      automático — las hermanas deciden desde el panel qué mostrar.
@@ -265,14 +276,13 @@ GROUP BY folio_pedido;
 
 
 -- ------------------------------------------------------------
--- 8. MOVIMIENTOS_INVENTARIO  (migración 008 — historial de entradas)
+-- 8. MOVIMIENTOS_INVENTARIO  (migración 008, extendida en 010 —
+--    historial de entradas de inventario, editable)
 --    A diferencia de productos.fecha_ingreso (solo la PRIMERA vez que
 --    el modelo entra al catálogo), esta tabla registra CADA llegada
---    por separado, con su propia fecha, cantidad y ubicación.
---    productos.existencias sigue siendo el conteo actual (se
---    incrementa con cada movimiento nuevo); esta tabla es el desglose
---    de cómo se llegó a ese número — mismo patrón que PAGOS es el
---    desglose de cómo se cobró una nota.
+--    por separado, con su propia fecha, cantidad, ubicación, proveedor
+--    y costo. Los renglones se pueden editar o borrar (no solo agregar)
+--    para poder corregir una captura equivocada.
 --
 --    producto_id -> productos(id) ON DELETE CASCADE: un movimiento no
 --      existe sin su producto.
@@ -280,19 +290,93 @@ GROUP BY folio_pedido;
 --      opcional, se conserva si se borra el usuario.
 --    ubicacion es VARCHAR libre, no FK: coincide con el estilo de
 --      productos.ubicaciones (TEXT[] de texto libre).
+--    proveedor_id (migración 010) = de qué proveedor vino ESTE lote —
+--      puede ser distinto del proveedor por defecto del producto
+--      (productos.proveedor_id), porque un mismo modelo a veces se
+--      reabastece de más de un lugar. Opcional: no siempre hay factura
+--      clara al momento de capturar.
+--    costo_unitario / costo_total (migración 010) = cuánto costó este
+--      lote, para poder ver gasto de restock por semana/ubicación/
+--      proveedor. costo_total es GENERATED (cantidad × costo_unitario);
+--      ambos opcionales por la misma razón que proveedor_id.
+--
+--    productos.existencias, productos.fecha_ingreso y
+--    productos.ubicaciones son DERIVADOS de esta tabla (ver el trigger
+--    más abajo) — la aplicación nunca los escribe directamente, solo
+--    inserta/edita/borra movimientos.
 -- ------------------------------------------------------------
 CREATE TABLE movimientos_inventario (
-    id           SERIAL PRIMARY KEY,
-    producto_id  INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
-    cantidad     INTEGER NOT NULL CHECK (cantidad > 0),
-    fecha        DATE NOT NULL DEFAULT CURRENT_DATE,
-    ubicacion    VARCHAR(100),
-    usuario_id   INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-    creado_en    TIMESTAMP NOT NULL DEFAULT NOW()
+    id             SERIAL PRIMARY KEY,
+    producto_id    INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    cantidad       INTEGER NOT NULL CHECK (cantidad > 0),
+    fecha          DATE NOT NULL DEFAULT CURRENT_DATE,
+    ubicacion      VARCHAR(100),
+    usuario_id     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    creado_en      TIMESTAMP NOT NULL DEFAULT NOW(),
+    proveedor_id   INTEGER REFERENCES proveedores(id),
+    costo_unitario NUMERIC(10,2),
+    costo_total    NUMERIC(10,2) GENERATED ALWAYS AS (cantidad * costo_unitario) STORED
 );
 
 CREATE INDEX idx_movimientos_producto_id ON movimientos_inventario (producto_id);
 CREATE INDEX idx_movimientos_fecha ON movimientos_inventario (fecha);
+
+-- Trigger: mantiene productos.existencias, productos.fecha_ingreso y
+-- productos.ubicaciones sincronizados con movimientos_inventario en
+-- cualquier INSERT/UPDATE/DELETE.
+--   existencias   = SUM(cantidad)
+--   fecha_ingreso = MIN(fecha)
+--   ubicaciones   = ubicaciones DISTINTAS (no nulas), ordenadas
+-- Así una edición o un borrado en el historial siempre se refleja, no
+-- solo las altas nuevas.
+CREATE OR REPLACE FUNCTION recalcular_existencias() RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        UPDATE productos SET
+            existencias   = COALESCE((SELECT SUM(cantidad) FROM movimientos_inventario WHERE producto_id = OLD.producto_id), 0),
+            fecha_ingreso = (SELECT MIN(fecha) FROM movimientos_inventario WHERE producto_id = OLD.producto_id),
+            ubicaciones   = COALESCE(
+                (SELECT array_agg(DISTINCT ubicacion ORDER BY ubicacion)
+                 FROM movimientos_inventario
+                 WHERE producto_id = OLD.producto_id AND ubicacion IS NOT NULL),
+                '{}'
+            )
+        WHERE id = OLD.producto_id;
+        RETURN OLD;
+    ELSE
+        UPDATE productos SET
+            existencias   = COALESCE((SELECT SUM(cantidad) FROM movimientos_inventario WHERE producto_id = NEW.producto_id), 0),
+            fecha_ingreso = (SELECT MIN(fecha) FROM movimientos_inventario WHERE producto_id = NEW.producto_id),
+            ubicaciones   = COALESCE(
+                (SELECT array_agg(DISTINCT ubicacion ORDER BY ubicacion)
+                 FROM movimientos_inventario
+                 WHERE producto_id = NEW.producto_id AND ubicacion IS NOT NULL),
+                '{}'
+            )
+        WHERE id = NEW.producto_id;
+
+        -- Caso raro: si un movimiento se reasigna a otro producto,
+        -- recalcular también el producto anterior.
+        IF TG_OP = 'UPDATE' AND OLD.producto_id IS DISTINCT FROM NEW.producto_id THEN
+            UPDATE productos SET
+                existencias   = COALESCE((SELECT SUM(cantidad) FROM movimientos_inventario WHERE producto_id = OLD.producto_id), 0),
+                fecha_ingreso = (SELECT MIN(fecha) FROM movimientos_inventario WHERE producto_id = OLD.producto_id),
+                ubicaciones   = COALESCE(
+                    (SELECT array_agg(DISTINCT ubicacion ORDER BY ubicacion)
+                     FROM movimientos_inventario
+                     WHERE producto_id = OLD.producto_id AND ubicacion IS NOT NULL),
+                    '{}'
+                )
+            WHERE id = OLD.producto_id;
+        END IF;
+        RETURN NEW;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_recalcular_existencias
+    AFTER INSERT OR UPDATE OR DELETE ON movimientos_inventario
+    FOR EACH ROW EXECUTE FUNCTION recalcular_existencias();
 
 
 -- ------------------------------------------------------------

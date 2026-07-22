@@ -539,6 +539,33 @@ async def historico_utilidad(
 
 
 # ---------------------------------------------------------------------------
+# Convención semana/mes — compartida por todos los reportes agrupados de
+# este archivo.
+#
+# date_trunc('week', fecha) en PostgreSQL ya trunca a LUNES por defecto
+# (definición de semana ISO 8601) — no hace falta lógica de límite de
+# semana a mano.
+#
+# Para la etiqueta "Semana N.AAAA" (convención Kalenderwoche / KW que la
+# familia ya usa): se computa en Python con date.isocalendar(), que da
+# (año ISO, semana ISO, día de la semana ISO) — año ISO, NO el año de
+# calendario, porque pueden diferir en fechas cerca del límite de año
+# (ej. el 31 de diciembre puede caer en la semana 1 del año ISO siguiente).
+# isocalendar() usa la misma definición ISO 8601 que date_trunc('week', …)
+# de Postgres, así que ambos siempre concuerdan.
+# ---------------------------------------------------------------------------
+
+_AGRUPACION_A_TRUNC = {"semana": "week", "mes": "month"}
+
+
+def _etiqueta_periodo(periodo, agrupacion: str) -> Optional[str]:
+    if agrupacion != "semana":
+        return None
+    iso_year, iso_week, _ = periodo.isocalendar()
+    return f"Semana {iso_week}.{iso_year}"
+
+
+# ---------------------------------------------------------------------------
 # GET /dashboard/ingresos-productos
 # ---------------------------------------------------------------------------
 # Cuántas UNIDADES de inventario entraron por periodo (semana/mes),
@@ -549,9 +576,6 @@ async def historico_utilidad(
 # real de arribos, incluyendo restocks — que es justo lo que esta vista
 # necesita mostrar.
 # ---------------------------------------------------------------------------
-
-_AGRUPACION_A_TRUNC = {"semana": "week", "mes": "month"}
-
 
 @router.get("/ingresos-productos")
 async def ingresos_productos(
@@ -594,8 +618,69 @@ async def ingresos_productos(
     return [
         {
             "periodo":              r[0].isoformat(),
+            "etiqueta":             _etiqueta_periodo(r[0], agrupacion),
             "proveedor":            r[1],
             "unidades_ingresadas":  r[2],
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/gasto-restock
+# ---------------------------------------------------------------------------
+# Cuánto se gastó reabasteciendo inventario, por periodo (semana/mes), y por
+# proveedor + ubicación (migración 010: movimientos_inventario ahora guarda
+# costo_unitario/costo_total y proveedor_id POR LOTE — no el proveedor por
+# defecto del producto, sino de dónde vino ESE restock específico).
+#
+# Movimientos sin costo capturado (costo_unitario NULL, opcional a propósito
+# — no siempre hay factura a la mano al momento de registrar) se excluyen:
+# no tiene sentido un renglón "$0 gastado" mezclado con gasto real.
+# ---------------------------------------------------------------------------
+
+@router.get("/gasto-restock")
+async def gasto_restock(
+    agrupacion: Literal["semana", "mes"] = Query("mes"),
+    proveedor_id: Optional[int] = Query(None, description="Filtrar por proveedor del lote"),
+    ubicacion: Optional[str] = Query(None, description="Filtrar por ubicación"),
+    _usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    trunc_unit = _AGRUPACION_A_TRUNC[agrupacion]
+
+    sql = f"""
+        SELECT
+            date_trunc('{trunc_unit}', m.fecha)::date AS periodo,
+            COALESCE(prov.proveedor, 'Sin proveedor')  AS proveedor,
+            COALESCE(m.ubicacion, 'Sin ubicación')      AS ubicacion,
+            SUM(m.costo_total)                          AS gasto_total
+        FROM  movimientos_inventario m
+        LEFT  JOIN proveedores prov ON prov.id = m.proveedor_id
+        WHERE m.costo_total IS NOT NULL
+    """
+    params: list = []
+    if proveedor_id is not None:
+        sql += " AND m.proveedor_id = %s"
+        params.append(proveedor_id)
+    if ubicacion is not None:
+        sql += " AND m.ubicacion = %s"
+        params.append(ubicacion)
+
+    # GROUP BY posicional — mismo motivo que en ingresos-productos.
+    sql += " GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"
+
+    async with conn.cursor() as cur:
+        await cur.execute(sql, params)
+        rows = await cur.fetchall()
+
+    return [
+        {
+            "periodo":     r[0].isoformat(),
+            "etiqueta":    _etiqueta_periodo(r[0], agrupacion),
+            "proveedor":   r[1],
+            "ubicacion":   r[2],
+            "gasto_total": float(r[3] or 0),
         }
         for r in rows
     ]
