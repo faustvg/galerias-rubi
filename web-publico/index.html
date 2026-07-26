@@ -263,10 +263,10 @@
       padding: .85rem 2.4rem;
       border: none;
       cursor: pointer;
-      transition: background .2s, transform .15s;
+      transition: background .2s, transform .15s, box-shadow .2s;
     }
-    .btn:hover  { background: var(--btn-hover); transform: translateY(-1px); }
-    .btn:active { transform: translateY(0); }
+    .btn:hover  { background: var(--btn-hover); transform: translateY(-1px); box-shadow: 0 8px 18px -10px rgba(77,54,46,.45); }
+    .btn:active { transform: translateY(0); box-shadow: none; }
 
     .btn-outline {
       background: transparent;
@@ -322,17 +322,58 @@
       gap: 1rem;
     }
 
+    /* Carrusel horizontal con scroll-snap nativo: en desktop se ven ~3
+       tarjetas, en tablet 2.2 y en móvil 1.15 — la tarjeta "asomada"
+       invita a deslizar. Las flechas solo existen donde hay puntero
+       (hover) — en táctil el gesto natural es el swipe. */
+    .featured-carousel { position: relative; }
+
     .featured-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      display: flex;
       gap: 1.2rem;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
     }
+    .featured-grid::-webkit-scrollbar { display: none; }
 
     .featured-card {
       position: relative;
       overflow: hidden;
       cursor: pointer;
       display: block;
+      flex: 0 0 calc((100% - 2.4rem) / 3);
+      scroll-snap-align: start;
+    }
+
+    .featured-nav {
+      position: absolute;
+      top: 37%;
+      transform: translateY(-50%);
+      z-index: 5;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid var(--btn);
+      background: rgba(250,248,245,.92);
+      color: var(--btn);
+      font-family: var(--serif);
+      font-size: 1.5rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background .2s, color .2s, opacity .25s;
+    }
+    .featured-nav:hover { background: var(--btn); color: var(--white); }
+    .featured-prev { left: -22px; }
+    .featured-next { right: -22px; }
+    .featured-nav:disabled { opacity: .25; pointer-events: none; }
+    .featured-carousel.sin-overflow .featured-nav { display: none; }
+    @media (hover: none) {
+      .featured-nav { display: none; }
     }
 
     .featured-card-img {
@@ -574,7 +615,16 @@
       align-items: center;
     }
 
-    .showcase-text .section-title { margin-bottom: 1.5rem; }
+    .showcase-text .section-title { margin-bottom: 1rem; }
+    .showcase-text .showcase-lede {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 1.2rem;
+      line-height: 1.5;
+      color: var(--accent2);
+      opacity: 1;
+      margin-bottom: 1.4rem;
+    }
     .showcase-text p {
       font-size: .92rem;
       line-height: 1.85;
@@ -583,21 +633,38 @@
     }
     .showcase-text .btn { margin-top: .8rem; }
 
+    /* Tríptico vertical — las tres fotos son retrato (3/4); paneles lado a
+       lado con el del centro desplazado hacia abajo para dar ritmo, como
+       cuadros colgados a distinta altura. El primero lleva el borde fino
+       desfasado (mismo lenguaje que .about-img::before). */
     .showcase-gallery {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 280px 180px;
-      gap: 6px;
+      grid-template-columns: 1fr 1.15fr 1fr;
+      gap: clamp(.6rem, 1.4vw, 1.1rem);
+      align-items: start;
+      padding-top: 14px;      /* espacio para el borde desfasado del panel 1 */
     }
-    .showcase-gallery .g1 {
-      grid-column: 1 / -1;
+    .showcase-panel {
+      margin: 0;
+      position: relative;
+    }
+    .showcase-panel.panel-centro { margin-top: 2.2rem; }
+    .showcase-panel.panel-borde::before {
+      content: '';
+      position: absolute;
+      inset: -12px 12px 12px -12px;
+      border: 1px solid var(--accent2);
+      pointer-events: none;
+    }
+    .panel-media {
+      position: relative;
+      z-index: 1;
       overflow: hidden;
+      background: var(--bg);
+      aspect-ratio: 3 / 4;
     }
-    .showcase-gallery .g1 img,
-    .showcase-gallery .g2 img,
-    .showcase-gallery .g3 img { transition: transform .6s ease; }
-    .showcase-gallery .g2, .showcase-gallery .g3 { overflow: hidden; }
-    .showcase-gallery:hover .g1 img { transform: scale(1.03); }
+    .panel-media img { transition: transform .6s ease; }
+    .showcase-panel:hover .panel-media img { transform: scale(1.04); }
 
     /* ── TESTIMONIAL ── */
     #testimonios {
@@ -675,7 +742,6 @@
       line-height: 1.5;
     }
 
-    .contacto-form { }
     .form-group {
       margin-bottom: 1.4rem;
     }
@@ -830,9 +896,69 @@
       margin: 1.4rem 0;
     }
 
+    /* ── VER MÁS (paginación de la colección) ── */
+    .ver-mas-wrap {
+      text-align: center;
+      margin-top: 3rem;
+    }
+
+    /* ── MOVIMIENTO AL HACER SCROLL ──
+       La clase .reveal se agrega SOLO desde JS (y solo si el usuario no
+       pidió movimiento reducido) — sin JS o con reduce activo, nada queda
+       oculto jamás. Solo opacity/transform: cero layout shift. */
+    .reveal {
+      opacity: 0;
+      transform: translateY(18px);
+      transition:
+        opacity .75s cubic-bezier(.16,1,.3,1),
+        transform .75s cubic-bezier(.16,1,.3,1);
+      transition-delay: var(--reveal-delay, 0ms);
+    }
+    .reveal.in {
+      opacity: 1;
+      transform: none;
+    }
+    /* la línea divisoria se "dibuja" al revelar su bloque */
+    .reveal .divider {
+      width: 0;
+      transition: width .7s cubic-bezier(.16,1,.3,1) .3s;
+    }
+    .reveal.in .divider { width: 40px; }
+
+    /* entrada escalonada de tarjetas (catálogo y destacados) — mismo
+       mecanismo que .reveal pero disparado al renderizar, no al scrollear */
+    .card-enter {
+      opacity: 0;
+      transform: translateY(16px);
+      transition:
+        opacity .6s cubic-bezier(.16,1,.3,1),
+        transform .6s cubic-bezier(.16,1,.3,1);
+    }
+    .card-enter.card-in {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* Ken Burns muy lento en la diapositiva activa del hero — apenas
+       perceptible, da vida a la foto durante los 6s que dura en pantalla.
+       Las capas inactivas descansan en la escala FINAL del zoom: así la
+       saliente no "brinca" de vuelta a 1 mientras todavía se desvanece. */
+    @keyframes heroZoom {
+      from { transform: scale(1); }
+      to   { transform: scale(1.06); }
+    }
+    .hero-slide { transform: scale(1.06); }
+    .hero-slide.activa { animation: heroZoom 6.5s linear forwards; }
+    @media (prefers-reduced-motion: reduce) {
+      .hero-slide { transform: none; }
+      .hero-slide.activa { animation: none; }
+      .reveal, .card-enter { opacity: 1; transform: none; transition: none; }
+      .reveal .divider { width: 40px; transition: none; }
+    }
+
     /* ── RESPONSIVE ── */
     @media (max-width: 900px) {
-      .featured-grid { grid-template-columns: 1fr 1fr; }
+      .featured-card { flex-basis: calc((100% - 2.4rem) / 2.2); }
       .proceso-steps { grid-template-columns: 1fr 1fr; }
       #nosotros, .amedida-showcase, #contacto { grid-template-columns: 1fr; }
       .about-img { aspect-ratio: 16/9; }
@@ -857,12 +983,28 @@
       section { padding: 4rem 5vw; }
       #nosotros { padding: 4rem 5vw; }
       .hero-box { padding: 1.8rem 1.4rem; }
-      .featured-grid { grid-template-columns: 1fr; }
+      .featured-card { flex-basis: calc((100% - 1.2rem) / 1.15); }
       .proceso-steps { grid-template-columns: 1fr; }
-      .showcase-gallery { grid-template-columns: 1fr; grid-template-rows: auto; }
-      .showcase-gallery .g1 { grid-column: auto; }
+      /* Tríptico en móvil: fila horizontal con snap, consistente con el
+         carrusel de destacados — nunca más franjas horizontales recortadas. */
+      .showcase-gallery {
+        display: flex;
+        gap: .8rem;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-top: 0;
+      }
+      .showcase-gallery::-webkit-scrollbar { display: none; }
+      .showcase-panel { flex: 0 0 72%; scroll-snap-align: start; }
+      .showcase-panel.panel-centro { margin-top: 0; }
+      .showcase-panel.panel-borde::before { display: none; }
       .footer-top { grid-template-columns: 1fr; gap: 2.5rem; }
       .catalog-grid { grid-template-columns: 1fr 1fr; gap: 1.5rem 1rem; }
+      .catalog-card h3 { font-size: 1rem; line-height: 1.35; }
+      .catalog-card .card-sub { font-size: .72rem; }
+      .tab-btn { padding: .85rem 1.4rem; }
       .coleccion-tabs {
         flex-wrap: nowrap;
         overflow-x: auto;
@@ -956,8 +1098,12 @@
     <a href="#coleccion" class="btn btn-outline" style="font-size:.75rem;padding:.7rem 1.6rem;">Ver colección completa</a>
   </div>
 
-  <div class="featured-grid" id="featured-grid">
-    <!-- Tarjetas inyectadas por JS a partir de /publico/productos filtrado a destacados=true -->
+  <div class="featured-carousel" id="featured-carousel">
+    <button type="button" class="featured-nav featured-prev" id="featured-prev" aria-label="Piezas anteriores">‹</button>
+    <div class="featured-grid" id="featured-grid" tabindex="0" aria-label="Carrusel de piezas destacadas">
+      <!-- Tarjetas inyectadas por JS a partir de /publico/productos filtrado a destacados=true -->
+    </div>
+    <button type="button" class="featured-nav featured-next" id="featured-next" aria-label="Más piezas">›</button>
   </div>
 </section>
 
@@ -968,16 +1114,19 @@
   </div>
   <div class="about-text">
     <p class="section-label">Nuestra historia</p>
-    <h2 class="section-title">Más de tres décadas<br><em>haciendo muebles con alma.</em></h2>
+    <h2 class="section-title">Más de tres décadas<br><em>dando vida a cada espacio.</em></h2>
     <div class="divider"></div>
     <p>
-      Somos una empresa familiar con más de 30 años de tradición artesanal en San Pedro Tultepec, Lerma. Cada pieza sale de nuestras manos con la misma dedicación que el primer día.
+      Desde hace más de 30 años fabricamos muebles que combinan diseño, comodidad y calidad artesanal. Cada pieza es elaborada por manos expertas en San Pedro Tultepec, Lerma, utilizando materiales seleccionados como <strong>madera de pino y chapa de parota</strong> para ofrecer muebles resistentes, elegantes y hechos para durar.
     </p>
     <p>
-      Trabajamos principalmente madera de <strong>pino y chapa de parota</strong> — maderas nobles que envejecen con dignidad. Nuestro equipo de carpinteros, pintores y lijadores domina técnicas que no se aprenden en libros.
+      Además de nuestros muebles de madera, encontrarás <strong>salas de tela, sillones, reclinables, sofá camas</strong> y una línea de <strong>herrería</strong> con mesas, bancos y mobiliario para hogar o negocio.
     </p>
     <p>
-      Aunque la madera es el corazón del taller, el catálogo no se detiene ahí: <strong>salas de piel y tela, sillones, reclinables y sofá camas</strong> listos para tu hogar, además de piezas en <strong>herrería</strong> — bancos, mesas de estudio y mesas para negocios — hechas con el mismo cuidado artesanal.
+      Personaliza el modelo, las medidas y los acabados para crear un espacio que refleje tu estilo. Cada mueble refleja nuestro compromiso con la calidad, el diseño y la durabilidad.
+    </p>
+    <p>
+      Explora nuestro catálogo y encuentra la pieza perfecta para hacer de tu hogar un lugar único.
     </p>
     <div class="stats-row">
       <div class="stat"><strong>30+</strong><span>Años de oficio</span></div>
@@ -1004,6 +1153,10 @@
     <!-- Cards injected by JS from data below -->
   </div>
 
+  <div class="ver-mas-wrap" id="ver-mas-wrap" style="display:none;">
+    <button type="button" id="btn-ver-mas" class="btn btn-outline"></button>
+  </div>
+
   <div class="coleccion-cta">
     <p>¿No encuentras lo que buscas? Podemos crearlo especialmente para ti.</p>
     <a href="#amedida" class="btn">Diseña a tu medida</a>
@@ -1014,10 +1167,10 @@
 <section id="amedida">
   <div class="amedida-intro">
     <p class="section-label">Diseño a medida</p>
-    <h2 class="section-title">Tu idea se convierte<br><em>en madera real.</em></h2>
+    <h2 class="section-title">Tú lo imaginas.<br><em>Nosotros lo construimos.</em></h2>
     <div class="divider" style="margin: 1.4rem auto;"></div>
     <p class="section-sub">
-      Trae tu boceto, una foto de Pinterest o solo una descripción — nosotros nos encargamos de transformarlo en un mueble único, hecho a mano especialmente para ti.
+      Cada proyecto comienza con tu idea y termina en una pieza única. Comparte tu boceto, una foto de referencia o solo una descripción por WhatsApp — nosotros nos encargamos del resto.
     </p>
   </div>
 
@@ -1047,7 +1200,8 @@
   <div class="amedida-showcase">
     <div class="showcase-text">
       <p class="section-label">Del bosque a tu sala</p>
-      <h2 class="section-title">Pino y chapa de parota:<br><em>maderas que duran generaciones.</em></h2>
+      <h2 class="section-title">Seleccionamos la madera.<br><em>Perfeccionamos cada detalle.</em></h2>
+      <p class="showcase-lede">Pino y chapa de parota: la base de muebles que perduran.</p>
       <p>
         Trabajamos exclusivamente con maderas nobles que mejoran con el tiempo. La parota, con sus vetas únicas e irrepetibles, convierte cada comedor o mesa en una obra singular.
       </p>
@@ -1057,15 +1211,21 @@
       <a href="#contacto" class="btn" style="margin-top:.8rem;">Inicia tu proyecto</a>
     </div>
     <div class="showcase-gallery">
-      <div class="g1">
-        <img src="assets/vertical/parota-1.webp" alt="Sala de madera Muebles Rubí" />
-      </div>
-      <div class="g2">
-        <img src="assets/vertical/parota-2.webp" alt="Sala tapizada Muebles Rubí" />
-      </div>
-      <div class="g3">
-        <img src="assets/vertical/parota-3.webp" alt="Ropero de madera de parota" />
-      </div>
+      <figure class="showcase-panel panel-borde">
+        <div class="panel-media">
+          <img src="assets/vertical/parota-1.webp" alt="Sala de madera Muebles Rubí" loading="lazy" />
+        </div>
+      </figure>
+      <figure class="showcase-panel panel-centro">
+        <div class="panel-media">
+          <img src="assets/vertical/parota-2.webp" alt="Sala tapizada Muebles Rubí" loading="lazy" />
+        </div>
+      </figure>
+      <figure class="showcase-panel">
+        <div class="panel-media">
+          <img src="assets/vertical/parota-3.webp" alt="Ropero de madera de parota" loading="lazy" />
+        </div>
+      </figure>
     </div>
   </div>
 </section>
@@ -1233,6 +1393,29 @@
 
   /* ── helpers ── */
   let allProducts = []
+  const REDUCIR_MOVIMIENTO = window.matchMedia('(prefers-reduced-motion: reduce)')
+
+  /* Entrada escalonada de tarjetas recién renderizadas. El estado final
+     (visible) lo pone una clase, no un estilo inline — si la transición no
+     llega a correr (pestaña oculta, reduce motion), la tarjeta queda
+     visible de todas formas. */
+  function animarEntrada(nodos) {
+    if (REDUCIR_MOVIMIENTO.matches) return
+    const cards = Array.from(nodos)
+    cards.forEach((c, i) => {
+      c.classList.add('card-enter')
+      c.style.transitionDelay = `${Math.min(i, 11) * 55}ms`
+    })
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      cards.forEach(c => {
+        c.classList.add('card-in')
+        c.addEventListener('transitionend', () => {
+          c.style.transitionDelay = ''
+          c.classList.remove('card-enter', 'card-in')
+        }, { once: true })
+      })
+    }))
+  }
 
   function fotoUrl(ruta) {
     if (!ruta) return null
@@ -1262,39 +1445,80 @@
     })
   }
 
-  /* ── cuadrícula de productos ── */
-  function renderCatalog(filtro) {
-    const grid  = document.getElementById('catalog-grid')
-    const items = filtro === null
+  /* ── cuadrícula de productos ──
+     Paginación incremental: se muestran 8 piezas y el botón "Ver más
+     piezas (N)" revela las siguientes 8. Cambiar de categoría reinicia
+     el conteo a 8. ── */
+  const TAM_PAGINA = 8
+  let filtroActual = null
+  let numVisibles  = TAM_PAGINA
+
+  function _itemsFiltrados() {
+    return filtroActual === null
       ? allProducts
-      : allProducts.filter(p => p.categoria_id === filtro)
+      : allProducts.filter(p => p.categoria_id === filtroActual)
+  }
+
+  function _cardCatalogo(p) {
+    const src = fotoUrl(p.fotos?.[0])
+    const img = src
+      ? `<img src="${src}" alt="${esc(p.nombre)}" loading="lazy" />`
+      : `<div class="foto-placeholder" aria-hidden="true">
+           <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+             <rect x="4" y="10" width="40" height="28" rx="2" stroke="currentColor" stroke-width="1.5" opacity=".3"/>
+             <circle cx="16" cy="22" r="4" stroke="currentColor" stroke-width="1.5" opacity=".3"/>
+             <path d="M4 34 L14 24 L24 30 L32 22 L44 34" stroke="currentColor" stroke-width="1.5" fill="none" opacity=".3"/>
+           </svg>
+         </div>`
+    const sub = [p.categoria, p.material, p.color].filter(Boolean).map(esc).join(' · ')
+    return `
+      <a class="catalog-card" href="producto.html?id=${p.id}">
+        <div class="catalog-card-img">${img}</div>
+        <h3>${esc(p.nombre)}</h3>
+        ${sub ? `<p class="card-sub">${sub}</p>` : ''}
+        <span class="ver-mas">Ver detalles →</span>
+      </a>`
+  }
+
+  function _actualizarBotonVerMas(total) {
+    const wrap = document.getElementById('ver-mas-wrap')
+    const btn  = document.getElementById('btn-ver-mas')
+    const restantes = total - numVisibles
+    if (restantes > 0) {
+      btn.textContent = `Ver más piezas (${restantes})`
+      wrap.style.display = ''
+    } else {
+      wrap.style.display = 'none'
+    }
+  }
+
+  function renderCatalog(filtro) {
+    filtroActual = filtro
+    numVisibles  = TAM_PAGINA
+    const grid  = document.getElementById('catalog-grid')
+    const items = _itemsFiltrados()
 
     if (items.length === 0) {
       grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--accent1);padding:2rem 0;">Sin productos en esta categoría.</p>'
+      _actualizarBotonVerMas(0)
       return
     }
 
-    grid.innerHTML = items.map(p => {
-      const src = fotoUrl(p.fotos?.[0])
-      const img = src
-        ? `<img src="${src}" alt="${esc(p.nombre)}" loading="lazy" />`
-        : `<div class="foto-placeholder" aria-hidden="true">
-             <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
-               <rect x="4" y="10" width="40" height="28" rx="2" stroke="currentColor" stroke-width="1.5" opacity=".3"/>
-               <circle cx="16" cy="22" r="4" stroke="currentColor" stroke-width="1.5" opacity=".3"/>
-               <path d="M4 34 L14 24 L24 30 L32 22 L44 34" stroke="currentColor" stroke-width="1.5" fill="none" opacity=".3"/>
-             </svg>
-           </div>`
-      const sub = [p.categoria, p.material, p.color].filter(Boolean).map(esc).join(' · ')
-      return `
-        <a class="catalog-card" href="producto.html?id=${p.id}">
-          <div class="catalog-card-img">${img}</div>
-          <h3>${esc(p.nombre)}</h3>
-          ${sub ? `<p class="card-sub">${sub}</p>` : ''}
-          <span class="ver-mas">Ver detalles →</span>
-        </a>`
-    }).join('')
+    grid.innerHTML = items.slice(0, numVisibles).map(_cardCatalogo).join('')
+    animarEntrada(grid.children)
+    _actualizarBotonVerMas(items.length)
   }
+
+  function verMasPiezas() {
+    const grid  = document.getElementById('catalog-grid')
+    const items = _itemsFiltrados()
+    const desde = numVisibles
+    numVisibles += TAM_PAGINA
+    grid.insertAdjacentHTML('beforeend', items.slice(desde, numVisibles).map(_cardCatalogo).join(''))
+    animarEntrada(Array.prototype.slice.call(grid.children, desde))
+    _actualizarBotonVerMas(items.length)
+  }
+  document.getElementById('btn-ver-mas').addEventListener('click', verMasPiezas)
 
   // Refleja la categoría activa en la URL (?categoria=ID) sin recargar la
   // página. replaceState (no pushState): un clic en un tab no debe apilar
@@ -1347,6 +1571,51 @@
           </div>
         </a>`
     }).join('')
+
+    animarEntrada(grid.children)
+    initFeaturedCarousel()
+  }
+
+  /* ── flechas del carrusel de destacados ──
+     Scroll nativo con snap; las flechas solo avanzan/retroceden una
+     tarjeta. Se desactivan (atenuadas) en cada extremo y desaparecen por
+     completo si todo cabe sin scroll. */
+  function initFeaturedCarousel() {
+    const wrap = document.getElementById('featured-carousel')
+    const grid = document.getElementById('featured-grid')
+    const prev = document.getElementById('featured-prev')
+    const next = document.getElementById('featured-next')
+    if (!wrap) return
+
+    function _paso() {
+      const card = grid.querySelector('.featured-card')
+      if (!card) return grid.clientWidth
+      const gap = parseFloat(getComputedStyle(grid).columnGap) || 0
+      return card.getBoundingClientRect().width + gap
+    }
+
+    function _actualizarFlechas() {
+      const maxScroll = grid.scrollWidth - grid.clientWidth
+      wrap.classList.toggle('sin-overflow', maxScroll < 4)
+      prev.disabled = grid.scrollLeft <= 2
+      next.disabled = grid.scrollLeft >= maxScroll - 2
+    }
+
+    function _mover(direccion) {
+      grid.scrollBy({
+        left: direccion * _paso(),
+        behavior: REDUCIR_MOVIMIENTO.matches ? 'auto' : 'smooth',
+      })
+    }
+
+    if (!wrap.dataset.listo) {
+      wrap.dataset.listo = '1'
+      prev.addEventListener('click', () => _mover(-1))
+      next.addEventListener('click', () => _mover(1))
+      grid.addEventListener('scroll', _actualizarFlechas, { passive: true })
+      window.addEventListener('resize', _actualizarFlechas)
+    }
+    _actualizarFlechas()
   }
 
   // Al cargar la página, si la URL trae ?categoria=ID (ej. al volver desde
@@ -1422,6 +1691,75 @@
       : 'none'
   })
 
+  /* ── revelado al hacer scroll ──
+     Un solo IntersectionObserver para toda la página. Las clases .reveal
+     se agregan aquí (no en el HTML): sin JS, o con "reducir movimiento"
+     activo, ningún contenido queda oculto. Cada elemento se revela una
+     sola vez (unobserve). */
+  function initReveals() {
+    if (REDUCIR_MOVIMIENTO.matches || !('IntersectionObserver' in window)) return
+
+    document.querySelectorAll(
+      '.destacados-header, .about-img, .about-text, .coleccion-header, ' +
+      '.amedida-intro, .showcase-text, .contacto-info, .contacto-form'
+    ).forEach(el => el.classList.add('reveal'))
+
+    // grupos escalonados: cada miembro entra 90ms después del anterior
+    const grupos = [
+      document.querySelectorAll('.proceso-steps .paso'),
+      document.querySelectorAll('.showcase-panel'),
+      document.querySelectorAll('#testimonios .section-label, .testimonial-quote, .testimonial-author'),
+    ]
+    grupos.forEach(lista => lista.forEach((el, i) => {
+      el.classList.add('reveal')
+      el.style.setProperty('--reveal-delay', `${i * 90}ms`)
+    }))
+
+    const io = new IntersectionObserver(entradas => {
+      entradas.forEach(en => {
+        if (en.isIntersecting) {
+          en.target.classList.add('in')
+          io.unobserve(en.target)
+        }
+      })
+    }, { threshold: 0.15 })
+
+    document.querySelectorAll('.reveal').forEach(el => io.observe(el))
+  }
+
+  /* ── contador de estadísticas (30+ / 7–15 / 100%) ──
+     Cuenta hacia arriba en ~1s cuando la fila entra en pantalla. Con
+     movimiento reducido no corre: los valores finales ya están en el HTML. */
+  function initStatsCounter() {
+    const fila = document.querySelector('.stats-row')
+    if (!fila || REDUCIR_MOVIMIENTO.matches || !('IntersectionObserver' in window)) return
+
+    const stats   = fila.querySelectorAll('.stat strong')
+    const finales = Array.from(stats).map(el => el.textContent)
+
+    const io = new IntersectionObserver(entradas => {
+      if (!entradas.some(en => en.isIntersecting)) return
+      io.disconnect()
+      const inicio = performance.now()
+      const DURACION = 950
+      function tick(ahora) {
+        const t = Math.min((ahora - inicio) / DURACION, 1)
+        const p = 1 - Math.pow(1 - t, 3)   // ease-out cúbico
+        stats.forEach((el, i) => {
+          el.textContent = t < 1
+            ? finales[i].replace(/\d+/g, n => Math.round(Number(n) * p))
+            : finales[i]
+        })
+        if (t < 1) requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    }, { threshold: 0.4 })
+
+    io.observe(fila)
+  }
+
+  initReveals()
+  initStatsCounter()
   cargarCatalogo()
 </script>
 </body>

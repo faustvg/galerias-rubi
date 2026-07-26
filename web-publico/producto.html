@@ -87,10 +87,21 @@
       margin-bottom: 2.5rem;
       display: flex;
       align-items: center;
-      gap: .5rem;
+      flex-wrap: wrap;          /* en móvil puede partirse en dos líneas */
+      gap: .3rem .5rem;
     }
     .breadcrumb a:hover { color: var(--btn); }
     .breadcrumb .sep { opacity: .4; }
+    /* el nombre del producto se trunca con … antes de desbordar */
+    .breadcrumb #bc-nombre {
+      color: var(--text);
+      opacity: .7;
+      max-width: 100%;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     .producto-layout {
       display: grid;
@@ -254,12 +265,23 @@
     .lightbox-next { right: 1.5rem; }
     .lightbox-nav[hidden], .lightbox-cerrar[hidden] { display: none; }
 
+    /* Entrada suave al cargar el producto: galería e info aparecen con un
+       leve desfase. Es un @keyframes normal (no depende de scroll) que
+       arranca cuando #producto-detalle pasa de display:none a visible. */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .producto-galeria { animation: fadeUp .6s cubic-bezier(.16,1,.3,1) both; }
+    .producto-info    { animation: fadeUp .6s cubic-bezier(.16,1,.3,1) .12s both; }
+
     @media (prefers-reduced-motion: reduce) {
       .galeria-principal img,
       .lightbox, .lightbox-imgwrap {
         transition-duration: .01ms !important;
       }
       .galeria-principal:hover img { transform: none; }
+      .producto-galeria, .producto-info { animation: none; }
     }
 
     /* ── INFO ── */
@@ -409,8 +431,10 @@
       <a href="index.html">Inicio</a>
       <span class="sep">›</span>
       <a href="index.html#coleccion">Colección</a>
+      <span class="sep" id="bc-cat-sep" style="display:none;">›</span>
+      <a id="bc-categoria" style="display:none;"></a>
       <span class="sep">›</span>
-      <span id="bc-nombre" style="color:var(--text);opacity:.7;"></span>
+      <span id="bc-nombre"></span>
     </div>
 
     <div class="producto-layout">
@@ -626,8 +650,17 @@
         .forEach(a => { a.href = destino })
     }
 
-    // Breadcrumb
+    // Breadcrumb — con miga de categoría enlazada al catálogo ya filtrado
+    // (Inicio › Colección › Categoría › Nombre). Sin categoría se queda
+    // la miga de 3 partes de siempre.
     document.getElementById('bc-nombre').textContent = p.nombre
+    if (p.categoria && p.categoria_id) {
+      const bcCat = document.getElementById('bc-categoria')
+      bcCat.textContent = p.categoria
+      bcCat.href = `index.html?categoria=${p.categoria_id}#coleccion`
+      bcCat.style.display = ''
+      document.getElementById('bc-cat-sep').style.display = ''
+    }
 
     // Categoría
     if (p.categoria) {
