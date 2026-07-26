@@ -9,14 +9,19 @@ CAMPOS EXPUESTOS vs. CAMPOS INTERNOS
 
   ✅ EXPUESTOS (seguros para clientes):
        id, nombre, fotos, categoria (nombre), categoria_id,
-       color, material, descripcion, precio_efectivo
+       color, material, descripcion, precio_efectivo,
+       precio_base, descuento_pct (efectivo)
+
+  descuento_pct expuesto es el EFECTIVO (COALESCE producto → categoría → 0),
+  junto con precio_base: el sitio los usa para mostrar la etiqueta de oferta
+  y el precio original tachado. Un descuento es información de marketing —
+  el cliente debe verlo. El margen (costo) sigue siendo privado.
 
   ❌ NUNCA EXPUESTOS (internos del negocio):
        costo          — margen de ganancia, información comercial privada
        existencias    — stock interno, no relevante para el cliente
        proveedor      — relación comercial interna
        ubicaciones    — logística interna del taller
-       descuento_pct  — porcentaje bruto; el cliente ve precio_efectivo calculado
        visible_en_sitio — flag interno, no sale al cliente
 
   El doble escudo:
@@ -77,6 +82,8 @@ class ProductoPublico(BaseModel):
     descripcion:      Optional[str]
     precio_efectivo:  float   # precio_base con descuento aplicado; costo NUNCA sale
     destacados:       bool    # marca manual del panel — filtra "Lo más buscado" en el sitio
+    precio_base:      float   # precio de lista — el sitio lo muestra tachado si hay oferta
+    descuento_pct:    float   # % efectivo (producto → categoría → 0); 0 = sin descuento
 
 
 class CategoriaPublica(BaseModel):
@@ -94,7 +101,8 @@ class CategoriaPublica(BaseModel):
 # Índices del resultado:
 #   r[0] id, r[1] nombre, r[2] fotos, r[3] categoria_id,
 #   r[4] categoria, r[5] color, r[6] material, r[7] descripcion,
-#   r[8] precio_efectivo
+#   r[8] precio_efectivo, r[9] destacados, r[10] precio_base,
+#   r[11] descuento_pct (efectivo)
 
 _SQL_BASE = """
     SELECT
@@ -111,7 +119,9 @@ _SQL_BASE = """
             * (1.0 - COALESCE(p.descuento_pct, c.descuento_pct, 0) / 100.0),
             2
         ) AS precio_efectivo,
-        p.destacados
+        p.destacados,
+        p.precio_base,
+        COALESCE(p.descuento_pct, c.descuento_pct, 0) AS descuento_pct
     FROM  productos   p
     LEFT  JOIN categorias c ON c.id = p.categoria_id
     WHERE p.visible_en_sitio = true
@@ -130,6 +140,8 @@ def _fila_a_producto(r) -> dict:
         "descripcion":     r[7],
         "precio_efectivo": float(r[8] or 0),
         "destacados":      r[9],
+        "precio_base":     float(r[10] or 0),
+        "descuento_pct":   float(r[11] or 0),
     }
 
 

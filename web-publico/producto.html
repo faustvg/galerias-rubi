@@ -291,6 +291,49 @@
       font-weight: 300;
       color: var(--btn);
       margin: 1.2rem 0 1.8rem;
+      display: flex;
+      align-items: baseline;
+      gap: .9rem;
+      flex-wrap: wrap;
+    }
+    /* precio de lista tachado — solo aparece cuando hay oferta */
+    .precio-original {
+      font-size: 1.35rem;
+      color: var(--accent2);
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+    /* chip de % junto al precio — mismo lenguaje que la etiqueta de las
+       tarjetas del catálogo */
+    .chip-descuento {
+      align-self: center;
+      background: var(--btn);
+      color: var(--white);
+      font-family: var(--sans);
+      font-size: .66rem;
+      font-weight: 400;
+      letter-spacing: .16em;
+      line-height: 1;
+      padding: .45rem .7rem .4rem;
+      box-shadow: inset 0 0 0 1px rgba(250,248,245,.35);
+    }
+
+    /* etiqueta de oferta sobre la foto principal de la galería */
+    .badge-descuento {
+      position: absolute;
+      top: .9rem;
+      left: .9rem;
+      z-index: 2;
+      background: var(--btn);
+      color: var(--white);
+      font-family: var(--sans);
+      font-size: .66rem;
+      font-weight: 400;
+      letter-spacing: .16em;
+      line-height: 1;
+      padding: .45rem .7rem .4rem;
+      box-shadow: inset 0 0 0 1px rgba(250,248,245,.35);
+      pointer-events: none;
     }
 
     .prod-detalles {
@@ -672,10 +715,16 @@
     // Nombre
     document.getElementById('prod-nombre').textContent = p.nombre
 
-    // Precio
+    // Precio — con oferta: precio de lista tachado + precio final + chip %.
+    // Solo valores numéricos formateados van al innerHTML, nada del usuario.
+    const conDescuento = p.descuento_pct > 0 && p.precio_base > p.precio_efectivo
     if (p.precio_efectivo > 0) {
       const el = document.getElementById('prod-precio')
-      el.textContent = formatPrecio(p.precio_efectivo)
+      el.innerHTML = conDescuento
+        ? `<span class="precio-original">${formatPrecio(p.precio_base)}</span>` +
+          `<span>${formatPrecio(p.precio_efectivo)}</span>` +
+          `<span class="chip-descuento">−${Math.round(p.descuento_pct)}%</span>`
+        : formatPrecio(p.precio_efectivo)
       el.style.display = ''
     }
 
@@ -711,6 +760,7 @@
 
     if (fotosActuales.length > 0) {
       galPrincipal.innerHTML = `
+        ${conDescuento ? `<span class="badge-descuento">−${Math.round(p.descuento_pct)}%</span>` : ''}
         <img id="foto-principal-img" src="${fotoUrl(fotosActuales[0])}" alt="${p.nombre}" />
         <div class="galeria-zoom-cue" aria-hidden="true">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
