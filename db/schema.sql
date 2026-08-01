@@ -9,11 +9,12 @@
 --  Stack: PostgreSQL (local en Windows ahora; también en VPS Hetzner)
 --
 --  Orden de creación = orden de dependencias:
---    1. categorias  2. proveedores  3. productos
---    4. usuarios    5. notas        6. partidas    7. pagos
---    8. movimientos_inventario
+--    1. categorias  2. proveedores  3. productos   4. sucursales
+--    5. producto_sucursal  6. usuarios  7. notas  8. partidas
+--    9. pagos  10. movimientos_inventario
 --  Las tablas "padre" se crean antes que las que las referencian.
---  (usuarios va ANTES de notas porque notas referencia a usuarios.)
+--  (usuarios va ANTES de notas porque notas referencia a usuarios.
+--  sucursales va ANTES de usuarios y notas porque ambas la referencian.)
 --
 --  Para cargar este archivo en psql (base de datos VACÍA):
 --    \i 'D:/Faus_/galerias_rubi/db/schema.sql'
@@ -109,7 +110,68 @@ CREATE INDEX idx_productos_destacados ON productos (destacados) WHERE destacados
 
 
 -- ------------------------------------------------------------
--- 4. USUARIOS  (cuentas del panel admin — autenticación y permisos)
+-- 4. SUCURSALES  (migración 011 — ubicaciones de venta)
+--    Catálogo cerrado de las ubicaciones donde se vende: San Pedro
+--    Tultepec (Muebles Rubí) y Ciudad de México (Muebles Local
+--    No.17) — dos entidades legales distintas, mismo taller/familia.
+--
+--    OJO: esto NO es lo mismo que productos.ubicaciones (bodega/
+--    logística interna, derivado de movimientos_inventario). Son
+--    conceptos separados a propósito: 'sucursal' es dónde se VENDE,
+--    'ubicacion' es dónde está FÍSICAMENTE guardado un mueble.
+--
+--    razon_social: el nombre fiscal, distinto del nombre comercial
+--      ('nombre'), porque cada sucursal es una entidad legal aparte
+--      para efectos fiscales.
+--    ocultar_precio_publico: decisión a nivel de SUCURSAL COMPLETA
+--      (no por producto individual) de mostrar precio o un CTA de
+--      WhatsApp en el sitio público para lo que vende esa sucursal.
+--    activo: permite dar de alta la sucursal en la base sin que
+--      aparezca todavía en el sitio público, mientras la familia
+--      termina de cargar sus datos reales desde el panel.
+--    es_principal: identifica a San Pedro de forma ESTABLE, sin
+--      depender del texto de 'nombre' (que sí es editable desde
+--      Sucursales.jsx). El backend usa esta columna — nunca
+--      nombre = 'Ciudad de México' — para decidir cuál sucursal
+--      alimenta los CTAs genéricos del sitio y cuál es "la otra" para
+--      disponible_cdmx/precio_cdmx. NO se expone como editable en la
+--      API/UI todavía: solo se fija por seed/migración, para que
+--      nunca queden 0 o 2+ sucursales marcadas principal por accidente.
+--      ⚠️ Asume EXACTAMENTE 2 sucursales — una tercera requeriría
+--      refactor a un modelo genérico, no solo este booleano.
+-- ------------------------------------------------------------
+CREATE TABLE sucursales (
+    id                     SERIAL PRIMARY KEY,
+    nombre                 VARCHAR(100) NOT NULL,
+    razon_social           VARCHAR(150) NOT NULL,
+    direccion              TEXT,
+    maps_url               TEXT,
+    whatsapp               VARCHAR(20),
+    ocultar_precio_publico BOOLEAN NOT NULL DEFAULT false,
+    activo                 BOOLEAN NOT NULL DEFAULT true,
+    es_principal           BOOLEAN NOT NULL DEFAULT false
+);
+
+
+-- ------------------------------------------------------------
+-- 5. PRODUCTO_SUCURSAL  (migración 011 — catálogo y precio por sucursal)
+--    Solo tiene fila cuando un producto TAMBIÉN se vende en una
+--    sucursal distinta de San Pedro (con su propio precio, por
+--    transporte/renta). San Pedro sigue usando productos.precio_base
+--    directamente y nunca necesita fila aquí.
+--    PRIMARY KEY compuesta (producto_id, sucursal_id): un producto
+--    tiene a lo más un precio por sucursal.
+-- ------------------------------------------------------------
+CREATE TABLE producto_sucursal (
+    producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    sucursal_id INTEGER NOT NULL REFERENCES sucursales(id) ON DELETE CASCADE,
+    precio      NUMERIC(10,2) NOT NULL,
+    PRIMARY KEY (producto_id, sucursal_id)
+);
+
+
+-- ------------------------------------------------------------
+-- 6. USUARIOS  (cuentas del panel admin — autenticación y permisos)
 --
 --    REGLAS DE SEGURIDAD (no negociables):
 --    - La contraseña NUNCA se guarda en texto plano. Se guarda un
@@ -137,6 +199,12 @@ CREATE INDEX idx_productos_destacados ON productos (destacados) WHERE destacados
 --    activo: permite desactivar a alguien sin borrarlo (ej. un
 --      empleado que se va). FALSE = no puede entrar, pero su
 --      historial de notas se conserva.
+--    sucursal_id (migración 011) = a qué sucursal está asignado HOY
+--      este usuario. Los vendedores se pueden reubicar (ej. de San
+--      Pedro a CDMX) — cambiar esto NO reescribe la sucursal de sus
+--      notas pasadas, solo afecta notas.sucursal_id de aquí en
+--      adelante (se copia al crear cada nota nueva). NULLABLE:
+--      roles que no son de piso (viewer) no necesitan una.
 -- ------------------------------------------------------------
 CREATE TABLE usuarios (
     id            SERIAL PRIMARY KEY,
@@ -146,12 +214,13 @@ CREATE TABLE usuarios (
     rol           VARCHAR(20) NOT NULL DEFAULT 'worker'
                   CHECK (rol IN ('superadmin', 'admin', 'viewer', 'worker')),
     activo        BOOLEAN NOT NULL DEFAULT true,
-    creado_en     TIMESTAMP NOT NULL DEFAULT NOW()
+    creado_en     TIMESTAMP NOT NULL DEFAULT NOW(),
+    sucursal_id   INTEGER REFERENCES sucursales(id) ON DELETE SET NULL
 );
 
 
 -- ------------------------------------------------------------
--- 5. NOTAS  (encabezado de la transacción: cotización/pedido/venta)
+-- 7. NOTAS  (encabezado de la transacción: cotización/pedido/venta)
 --    folio = número del talonario de papel (ej. '0986'). Es TEXTO,
 --      no entero, para conservar ceros a la izquierda.
 --    Cliente APLANADO aquí (nombre_cliente, telefono) — sin tabla
@@ -182,6 +251,16 @@ CREATE TABLE usuarios (
 --      nombre en Usuarios, todas sus notas pasadas lo reflejan de
 --      inmediato. 'vendedor' (texto) sigue existiendo como respaldo
 --      para notas de papel sin cuenta de sistema asociada.
+--
+--    sucursal_id (migración 011) = la sucursal de ESTA VENTA,
+--      CONGELADA al crear la nota (se copia del sucursal_id del
+--      vendedor en ese momento). A propósito NO es un JOIN en vivo
+--      como vendedor_id: si el vendedor se reubica de sucursal
+--      después, sus notas pasadas deben seguir mostrando la sucursal
+--      donde realmente ocurrió la venta — mismo principio de "no
+--      reescribir historia" que fecha_ingreso. NULLABLE: notas
+--      históricas anteriores a esta migración no tienen forma
+--      confiable de inferir su sucursal, quedan sin asignar.
 -- ------------------------------------------------------------
 CREATE TABLE notas (
     folio            VARCHAR(20) PRIMARY KEY,
@@ -197,12 +276,13 @@ CREATE TABLE notas (
     consideraciones  TEXT,
     usuario_id       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
     vendedor_id      INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-    foto_nota        TEXT
+    foto_nota        TEXT,
+    sucursal_id      INTEGER REFERENCES sucursales(id) ON DELETE SET NULL
 );
 
 
 -- ------------------------------------------------------------
--- 6. PARTIDAS  (una línea por producto con su propio precio)
+-- 8. PARTIDAS  (una línea por producto con su propio precio)
 --    Tabla puente que resuelve el muchos-a-muchos entre NOTAS y
 --    PRODUCTOS. REGLA: una partida = una cosa con su propio precio.
 --      Dos productos -> dos partidas bajo el mismo folio.
@@ -230,7 +310,7 @@ CREATE TABLE partidas (
 
 
 -- ------------------------------------------------------------
--- 7. PAGOS  (migración 007 — cómo se cobró cada nota)
+-- 9. PAGOS  (migración 007 — cómo se cobró cada nota)
 --    Tabla nueva en vez de columnas en NOTAS porque un pedido
 --    normalmente se cobra en más de un momento (anticipo al
 --    levantar el pedido, resta al entregar), y cada momento puede
@@ -276,7 +356,7 @@ GROUP BY folio_pedido;
 
 
 -- ------------------------------------------------------------
--- 8. MOVIMIENTOS_INVENTARIO  (migración 008, extendida en 010 —
+-- 10. MOVIMIENTOS_INVENTARIO  (migración 008, extendida en 010 —
 --    historial de entradas de inventario, editable)
 --    A diferencia de productos.fecha_ingreso (solo la PRIMERA vez que
 --    el modelo entra al catálogo), esta tabla registra CADA llegada
@@ -383,3 +463,17 @@ CREATE TRIGGER trg_recalcular_existencias
 -- SECUENCIA para folios digitales (notas creadas en el sistema)
 -- ------------------------------------------------------------
 CREATE SEQUENCE IF NOT EXISTS notas_digital_seq START 1;
+
+
+-- ------------------------------------------------------------
+-- SEED de sucursales (migración 011)
+-- San Pedro con los datos ya publicados en el sitio. CDMX queda con
+-- placeholders y activo=false hasta que la familia complete sus
+-- datos reales desde el panel (Sucursales.jsx) y la active.
+-- ------------------------------------------------------------
+INSERT INTO sucursales (nombre, razon_social, direccion, maps_url, whatsapp, ocultar_precio_publico, activo, es_principal) VALUES
+  ('San Pedro Tultepec', 'Muebles Rubí',
+   'C. Benito Juárez 73, C. Benito Juárez Manzana 033, 52030 San Pedro Tultepec, Lerma, Estado de México',
+   NULL, '5217225723939', false, true, true),
+  ('Ciudad de México', 'Muebles Local No.17',
+   'PENDIENTE — completar desde el panel', NULL, NULL, true, false, false);

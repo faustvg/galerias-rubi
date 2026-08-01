@@ -328,7 +328,7 @@ function KpiCard({ etiqueta, valor, sub, color = 'gray' }) {
 
 // ── Sección de gráficas ───────────────────────────────────────────────────────
 function GraficasUtilidad({ utilidad, es_worker }) {
-  const { por_categoria, por_proveedor, por_worker } = utilidad
+  const { por_categoria, por_proveedor, por_sucursal, por_worker } = utilidad
 
   const hayDatos = (arr) => arr && arr.some((d) => d.utilidad !== 0)
 
@@ -346,6 +346,13 @@ function GraficasUtilidad({ utilidad, es_worker }) {
           titulo="Utilidad estimada por proveedor"
           datos={por_proveedor}
           color="#6366f1"
+        />
+      )}
+      {hayDatos(por_sucursal) && (
+        <GraficarBarras
+          titulo="Utilidad estimada por sucursal"
+          datos={por_sucursal}
+          color="#ec4899"
         />
       )}
       {/* Solo admin/superadmin/viewer ven comparación entre workers */}

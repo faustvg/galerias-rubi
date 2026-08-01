@@ -403,7 +403,7 @@ function KpiCard({ etiqueta, valor, sub, color = 'gray' }) {
 // ── Gráficas de utilidad ──────────────────────────────────────────────────────
 
 function GraficasUtilidad({ utilidad, es_worker }) {
-  const { por_categoria, por_proveedor, por_worker } = utilidad
+  const { por_categoria, por_proveedor, por_sucursal, por_worker } = utilidad
   const hayDatos = (arr) => arr && arr.some((d) => d.utilidad !== 0)
 
   return (
@@ -413,6 +413,9 @@ function GraficasUtilidad({ utilidad, es_worker }) {
       )}
       {hayDatos(por_proveedor) && (
         <GraficarBarras titulo="Utilidad por proveedor"  datos={por_proveedor} color="#6366f1" />
+      )}
+      {hayDatos(por_sucursal) && (
+        <GraficarBarras titulo="Utilidad por sucursal"   datos={por_sucursal}  color="#ec4899" />
       )}
       {!es_worker && hayDatos(por_worker) && (
         <GraficarBarras titulo="Utilidad por vendedor"   datos={por_worker}    color="#10b981" />

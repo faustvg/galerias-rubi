@@ -57,7 +57,9 @@ const COLORES_ROL = {
   worker:     'bg-green-100 text-green-700',
 }
 
-// Tabla de navegación. `soloRol` oculta un enlace para todos excepto ese rol.
+// Tabla de navegación. `soloRol` oculta un enlace para todos excepto ese rol;
+// `soloRoles` hace lo mismo con una lista (viewer no tiene acceso de escritura
+// en sucursales, pero sí puede editar notas, así que no encajaba en soloRol).
 const NAV = [
   { to: '/',            label: 'Inicio',         end: true               },
   { to: '/historico',   label: 'Histórico'                               },
@@ -65,6 +67,7 @@ const NAV = [
   { to: '/notas',       label: 'Notas / Ventas'                          },
   { to: '/categorias',  label: 'Categorías'                              },
   { to: '/proveedores', label: 'Proveedores'                             },
+  { to: '/sucursales',  label: 'Sucursales',     soloRoles: ['superadmin', 'admin', 'worker'] },
   { to: '/usuarios',    label: 'Usuarios',       soloRol: 'superadmin'   },
 ]
 
@@ -82,9 +85,11 @@ export default function Layout({ children }) {
   const inicial    = usuario?.nombre?.charAt(0)?.toUpperCase() ?? '?'
 
   // Ocultar enlaces restringidos por rol
-  const enlacesVisibles = NAV.filter(
-    (item) => !item.soloRol || usuario?.rol === item.soloRol
-  )
+  const enlacesVisibles = NAV.filter((item) => {
+    if (item.soloRol) return usuario?.rol === item.soloRol
+    if (item.soloRoles) return item.soloRoles.includes(usuario?.rol)
+    return true
+  })
 
   // NavLink espera una función para className cuando queremos estilos dinámicos
   function claseEnlace({ isActive }) {

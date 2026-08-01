@@ -249,6 +249,44 @@ async def utilidad(
             )
         prov_rows = await cur.fetchall()
 
+        # ── Utilidad por sucursal ───────────────────────────────────────────────
+        # Panel combinado: no es una restricción de acceso, es un desglose más
+        # (mismo patrón que categoría/proveedor) — worker también lo ve, solo
+        # limitado a sus propias notas como el resto de los desgloses.
+        if es_worker:
+            await cur.execute(
+                """
+                SELECT
+                    COALESCE(s.nombre, 'Sin sucursal') AS nombre,
+                    COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
+                FROM partidas par
+                JOIN notas n ON n.folio = par.folio_pedido
+                JOIN productos prod ON prod.id = par.producto_id
+                LEFT JOIN sucursales s ON s.id = n.sucursal_id
+                WHERE n.estatus != 'Cancelado'
+                  AND n.usuario_id = %s
+                GROUP BY s.nombre
+                ORDER BY utilidad DESC
+                """,
+                (usuario.id,),
+            )
+        else:
+            await cur.execute(
+                """
+                SELECT
+                    COALESCE(s.nombre, 'Sin sucursal') AS nombre,
+                    COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
+                FROM partidas par
+                JOIN notas n ON n.folio = par.folio_pedido
+                JOIN productos prod ON prod.id = par.producto_id
+                LEFT JOIN sucursales s ON s.id = n.sucursal_id
+                WHERE n.estatus != 'Cancelado'
+                GROUP BY s.nombre
+                ORDER BY utilidad DESC
+                """
+            )
+        suc_rows = await cur.fetchall()
+
         # ── Utilidad por worker (solo admin / superadmin / viewer) ────────────
         worker_rows = None
         if not es_worker:
@@ -274,6 +312,9 @@ async def utilidad(
         ],
         "por_proveedor": [
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in prov_rows
+        ],
+        "por_sucursal": [
+            {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in suc_rows
         ],
         "por_worker": [
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in worker_rows
@@ -505,6 +546,42 @@ async def historico_utilidad(
             )
         prov_rows = await cur.fetchall()
 
+        # ── Por sucursal ────────────────────────────────────────────────────────
+        if es_worker:
+            await cur.execute(
+                """
+                SELECT
+                    COALESCE(s.nombre, 'Sin sucursal') AS nombre,
+                    COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
+                FROM partidas par
+                JOIN notas n ON n.folio = par.folio_pedido
+                JOIN productos prod ON prod.id = par.producto_id
+                LEFT JOIN sucursales s ON s.id = n.sucursal_id
+                WHERE n.estatus != 'Cancelado'
+                  AND n.fecha_pedido BETWEEN %s AND %s
+                  AND n.usuario_id = %s
+                GROUP BY s.nombre ORDER BY utilidad DESC
+                """,
+                (fecha_desde, fecha_hasta, usuario.id),
+            )
+        else:
+            await cur.execute(
+                """
+                SELECT
+                    COALESCE(s.nombre, 'Sin sucursal') AS nombre,
+                    COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
+                FROM partidas par
+                JOIN notas n ON n.folio = par.folio_pedido
+                JOIN productos prod ON prod.id = par.producto_id
+                LEFT JOIN sucursales s ON s.id = n.sucursal_id
+                WHERE n.estatus != 'Cancelado'
+                  AND n.fecha_pedido BETWEEN %s AND %s
+                GROUP BY s.nombre ORDER BY utilidad DESC
+                """,
+                (fecha_desde, fecha_hasta),
+            )
+        suc_rows = await cur.fetchall()
+
         # ── Por vendedor (solo admin / superadmin / viewer) ────────────────────
         worker_rows = None
         if not es_worker:
@@ -531,6 +608,9 @@ async def historico_utilidad(
         ],
         "por_proveedor": [
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in prov_rows
+        ],
+        "por_sucursal": [
+            {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in suc_rows
         ],
         "por_worker": [
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in worker_rows

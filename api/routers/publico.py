@@ -10,7 +10,8 @@ CAMPOS EXPUESTOS vs. CAMPOS INTERNOS
   ✅ EXPUESTOS (seguros para clientes):
        id, nombre, fotos, categoria (nombre), categoria_id,
        color, material, descripcion, precio_efectivo,
-       precio_base, descuento_pct (efectivo)
+       precio_base, descuento_pct (efectivo),
+       disponible_cdmx, precio_cdmx (None si esa sucursal oculta precio)
 
   descuento_pct expuesto es el EFECTIVO (COALESCE producto → categoría → 0),
   junto con precio_base: el sitio los usa para mostrar la etiqueta de oferta
@@ -84,12 +85,36 @@ class ProductoPublico(BaseModel):
     destacados:       bool    # marca manual del panel — filtra "Lo más buscado" en el sitio
     precio_base:      float   # precio de lista — el sitio lo muestra tachado si hay oferta
     descuento_pct:    float   # % efectivo (producto → categoría → 0); 0 = sin descuento
+    # disponible_cdmx / precio_cdmx (migración 011): intencionalmente
+    # específicos a "CDMX", no un array genérico de sucursales — con solo
+    # 2 ubicaciones no vale la pena esa abstracción todavía. Si se agrega
+    # una tercera sucursal, este endpoint necesita refactorizarse a una
+    # lista genérica de disponibilidad/precio por sucursal.
+    disponible_cdmx:  bool             # true si el producto también se vende en CDMX (y esa sucursal está activa)
+    precio_cdmx:      Optional[float]  # precio en CDMX si esa sucursal muestra precio; None = mostrar CTA de WhatsApp en su lugar
 
 
 class CategoriaPublica(BaseModel):
     """Vista pública de categoría — solo id y nombre, sin descuento_pct."""
     id:     int
     nombre: str
+
+
+class SucursalPublica(BaseModel):
+    """Vista pública de sucursal — sin ocultar_precio_publico (el frontend
+    no necesita el flag crudo, solo el resultado ya calculado en
+    ProductoPublico.precio_cdmx).
+    es_principal se expone para que el JS del sitio identifique cuál
+    sucursal alimenta los CTAs genéricos (burbuja de WhatsApp, footer)
+    SIN comparar contra el texto de 'nombre' — ese es editable desde el
+    panel y no debe usarse como llave de negocio (ver comentario en
+    schema.sql / migración 011)."""
+    id:           int
+    nombre:       str
+    direccion:    Optional[str]
+    maps_url:     Optional[str]
+    whatsapp:     Optional[str]
+    es_principal: bool
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +127,7 @@ class CategoriaPublica(BaseModel):
 #   r[0] id, r[1] nombre, r[2] fotos, r[3] categoria_id,
 #   r[4] categoria, r[5] color, r[6] material, r[7] descripcion,
 #   r[8] precio_efectivo, r[9] destacados, r[10] precio_base,
-#   r[11] descuento_pct (efectivo)
+#   r[11] descuento_pct (efectivo), r[12] disponible_cdmx, r[13] precio_cdmx
 
 _SQL_BASE = """
     SELECT
@@ -121,9 +146,25 @@ _SQL_BASE = """
         ) AS precio_efectivo,
         p.destacados,
         p.precio_base,
-        COALESCE(p.descuento_pct, c.descuento_pct, 0) AS descuento_pct
+        COALESCE(p.descuento_pct, c.descuento_pct, 0) AS descuento_pct,
+        (s_cdmx.id IS NOT NULL)                                        AS disponible_cdmx,
+        CASE WHEN s_cdmx.id IS NOT NULL AND NOT s_cdmx.ocultar_precio_publico
+             THEN ps_cdmx.precio END                                   AS precio_cdmx
     FROM  productos   p
     LEFT  JOIN categorias c ON c.id = p.categoria_id
+    LEFT  JOIN producto_sucursal ps_cdmx ON ps_cdmx.producto_id = p.id
+    LEFT  JOIN sucursales s_cdmx
+           -- "la otra sucursal" = la NO principal. NUNCA comparar contra
+           -- nombre (editable desde el panel, ver Sucursales.jsx) — usar
+           -- siempre es_principal, la única llave estable. activo=true
+           -- además evita que CDMX aparezca disponible en el sitio antes
+           -- de que la familia la active, aunque ya se haya preparado su
+           -- catálogo desde el admin (ver GET /admin/productos en
+           -- catalogo.py, que sí puede mostrarlo sin este filtro).
+           -- ⚠️ Asume exactamente 2 sucursales — ver nota en migración 011.
+           ON  s_cdmx.id = ps_cdmx.sucursal_id
+           AND s_cdmx.es_principal = false
+           AND s_cdmx.activo = true
     WHERE p.visible_en_sitio = true
 """
 
@@ -142,6 +183,8 @@ def _fila_a_producto(r) -> dict:
         "destacados":      r[9],
         "precio_base":     float(r[10] or 0),
         "descuento_pct":   float(r[11] or 0),
+        "disponible_cdmx": r[12],
+        "precio_cdmx":     float(r[13]) if r[13] is not None else None,
     }
 
 
@@ -222,3 +265,33 @@ async def categorias_publicas(conn=Depends(get_db)):
         )
         rows = await cur.fetchall()
     return [{"id": r[0], "nombre": r[1]} for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# GET /publico/sucursales
+# ---------------------------------------------------------------------------
+
+@router.get("/sucursales", response_model=list[SucursalPublica])
+async def sucursales_publicas(conn=Depends(get_db)):
+    """
+    Sucursales activas para la sección de contacto y el WhatsApp dinámico
+    del sitio. Filtra activo=true — así CDMX no aparece hasta que la
+    familia complete sus datos reales desde el panel y la active.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT id, nombre, direccion, maps_url, whatsapp, es_principal
+            FROM   sucursales
+            WHERE  activo = true
+            ORDER BY id
+            """
+        )
+        rows = await cur.fetchall()
+    return [
+        {
+            "id": r[0], "nombre": r[1], "direccion": r[2],
+            "maps_url": r[3], "whatsapp": r[4], "es_principal": r[5],
+        }
+        for r in rows
+    ]

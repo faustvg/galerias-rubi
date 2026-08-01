@@ -55,6 +55,8 @@ const FORM_VACÍO = {
   descuento_pct:   '',
   visible_en_sitio: true,
   destacados:      false,
+  disponible_cdmx: false,
+  precio_cdmx:     '',
   // existencias, fecha_ingreso y ubicaciones NO viven aquí: son derivados
   // de movimientos_inventario (migración 010) y ya no se capturan al
   // crear — un producto nuevo arranca en existencias=0 / sin ubicaciones,
@@ -102,6 +104,8 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
         descuento_pct:    producto.descuento_pct?.toString() ?? '',
         visible_en_sitio: producto.visible_en_sitio ?? true,
         destacados:       producto.destacados ?? false,
+        disponible_cdmx:  producto.disponible_cdmx ?? false,
+        precio_cdmx:      producto.precio_cdmx?.toString() ?? '',
         // existencias, fecha_ingreso y ubicaciones: SOLO lectura aquí
         // (derivados vía trigger, migración 010). Se muestran para
         // contexto y se mantienen frescos por el callback de "Editar
@@ -156,6 +160,14 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
       setError('El costo debe ser un número mayor o igual a 0.')
       return
     }
+    let precioCdmx = null
+    if (form.disponible_cdmx) {
+      precioCdmx = parseFloat(form.precio_cdmx)
+      if (isNaN(precioCdmx) || precioCdmx < 0) {
+        setError('El precio en CDMX debe ser un número mayor o igual a 0.')
+        return
+      }
+    }
 
     // Construir el payload que irá al API.
     // Los campos vacíos opcionales se mandan como null (no como '').
@@ -174,6 +186,8 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
       descuento_pct:    form.descuento_pct !== '' ? parseFloat(form.descuento_pct) : null,
       visible_en_sitio: form.visible_en_sitio,
       destacados:       form.destacados,
+      disponible_cdmx:  form.disponible_cdmx,
+      precio_cdmx:      precioCdmx,
     }
 
     setGuardando(true)
@@ -468,6 +482,40 @@ export default function ProductoModal({ producto, onGuardado, onCerrar }) {
               </p>
             </div>
           </label>
+
+          {/* También disponible en CDMX — sucursal con catálogo y precio
+              propios (migración 011). Si se desmarca, el producto deja de
+              aparecer como disponible en CDMX en el sitio público. */}
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.disponible_cdmx}
+              onChange={cambiar('disponible_cdmx')}
+              className="w-4 h-4 rounded accent-amber-600 shrink-0"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700">
+                También disponible en CDMX
+              </span>
+              <p className="text-xs text-gray-400">
+                Además de San Pedro, este producto también se vende en la sucursal CDMX
+                (con su propio precio por transporte/renta).
+              </p>
+            </div>
+          </label>
+
+          {form.disponible_cdmx && (
+            <Campo label="Precio en CDMX">
+              <input
+                type="number"
+                min="0" step="0.01"
+                value={form.precio_cdmx}
+                onChange={cambiar('precio_cdmx')}
+                className={inputCls}
+                placeholder="0.00"
+              />
+            </Campo>
+          )}
 
           {/* ── Fotos ── */}
           <hr className="border-gray-100" />

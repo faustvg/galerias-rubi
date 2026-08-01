@@ -25,7 +25,7 @@ El sistema digitaliza ese flujo sin reemplazarlo: el folio de papel sigue siendo
 | API | FastAPI · Python 3.12 · uvicorn |
 | Base de datos | PostgreSQL (local Windows en desarrollo · VPS Hetzner Ubuntu 24.04 en producción) |
 | Driver DB | psycopg 3 (psycopg3) + psycopg-pool |
-| Puente estático | `generar_json.py` → `productos.json` |
+| Admin | React + Vite + Tailwind + Recharts (`admin/`) |
 | Secretos | `python-dotenv` · archivo `.env` (nunca en git) |
 
 ---
@@ -35,38 +35,27 @@ El sistema digitaliza ese flujo sin reemplazarlo: el folio de papel sigue siendo
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                     GitHub Pages                         │
-│                      index.html                          │
+│              index.html · producto.html                  │
 │          (HTML · CSS · JS todo en un solo archivo)       │
 └────────────────────────┬─────────────────────────────────┘
-                         │ GET /productos  (FastAPI)
-                         │      ó
-                         │ productos.json  (estático)
+                         │ GET /publico/productos
+                         │ GET /publico/categorias   (fetch en vivo)
                          ▼
 ┌──────────────────────────────────────────────────────────┐
-│               FastAPI  (main.py)                         │
-│  /categorias · /productos · /productos/{id}              │
-│  AsyncConnectionPool  min=1  max=5                       │
+│               FastAPI  (api/main.py + routers/)           │
+│  /publico/* (sitio) · /categorias /productos /... (admin) │
+│  AsyncConnectionPool  min=1  max=5                        │
 └────────────────────────┬─────────────────────────────────┘
                          │ psycopg3 async
                          ▼
 ┌──────────────────────────────────────────────────────────┐
-│                   PostgreSQL                             │
-│  categorias · proveedores · productos                    │
-│  notas · partidas                                        │
+│                   PostgreSQL                              │
+│  categorias · proveedores · productos · usuarios          │
+│  notas · partidas · pagos · movimientos_inventario         │
 └──────────────────────────────────────────────────────────┘
-                         ▲
-              generar_json.py  (script manual)
-              Lee productos visibles y escribe
-              productos.json para el sitio estático.
-              Se ejecuta tras cada cambio en el catálogo.
 ```
 
-### Dos modos de servir el catálogo
-
-| Modo | Cómo funciona | Cuándo usarlo |
-|---|---|---|
-| **Estático** | `generar_json.py` genera `productos.json`, se sube a GitHub Pages | Deploy simple, sin servidor |
-| **API** | `uvicorn main:app` sirve datos en tiempo real con filtros | Con VPS activo en producción |
+El catálogo se sirve **siempre en vivo** vía la API — no hay paso intermedio de generación de JSON estático ni script manual que ejecutar tras editar el catálogo.
 
 ---
 
@@ -108,24 +97,22 @@ uvicorn main:app --reload
 # Documentación interactiva: http://localhost:8000/docs
 ```
 
-### Generar el JSON estático
-
-```bash
-python generar_json.py
-# Escribe productos.json con todos los productos visibles
-```
-
 ---
 
 ## Endpoints de la API
 
+Esta tabla no es exhaustiva — hay routers completos para notas/pagos, usuarios/vendedores, movimientos de inventario y el dashboard de reportes (ver `api/routers/`). Los dos grupos principales para el sitio público:
+
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/categorias` | Lista todas las categorías con su descuento |
-| `GET` | `/productos` | Lista productos visibles (`?categoria_id=n` para filtrar) |
-| `GET` | `/productos/{id}` | Detalle de un producto; 404 si no existe |
+| `GET` | `/categorias` | Lista todas las categorías con su descuento (uso interno del panel admin) |
+| `GET` | `/productos` | Lista productos visibles (`?categoria_id=n` para filtrar; uso interno del panel admin) |
+| `GET` | `/productos/{id}` | Detalle de un producto; 404 si no existe (uso interno del panel admin) |
+| `GET` | `/publico/categorias` | Igual que arriba pero sin exponer `costo`/`existencias` — lo consume `web-publico/` |
+| `GET` | `/publico/productos` | Igual — devuelve `precio_efectivo` ya calculado, lo consume `web-publico/` |
+| `GET` | `/publico/productos/{id}` | Detalle público de un producto |
 
-El campo `descuento_pct` en `/productos` refleja el descuento efectivo: el del producto si está definido, o el de su categoría si no (`COALESCE`).
+El campo `descuento_pct` refleja el descuento efectivo: el del producto si está definido, o el de su categoría si no (`COALESCE`).
 
 ---
 
@@ -191,13 +178,11 @@ Los clientes de este negocio rara vez repiten compra con el mismo folio de refer
 
 ```
 galerias_rubi/
-├── index.html          # Sitio completo (CSS + JS inline, sin build)
-├── main.py             # API FastAPI
-├── generar_json.py     # Puente DB → JSON estático
-├── schema.sql          # DDL completo de PostgreSQL
-├── productos.json      # Generado; no editar a mano
+├── web-publico/         # Sitio estático (GitHub Pages): index.html, producto.html
+├── api/                 # API FastAPI (main.py + routers/)
+├── admin/               # Panel admin (React + Vite)
+├── db/schema.sql        # DDL completo de PostgreSQL + db/migrations/
 ├── requirements.txt
-├── .env                # Credenciales (no en git)
-├── assets/             # Logo
-└── img/                # Fotos propias de productos
+├── .env                 # Credenciales (no en git)
+└── web-publico/assets, img/   # Logo y fotos propias de productos
 ```

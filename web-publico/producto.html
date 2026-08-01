@@ -303,6 +303,14 @@
       text-decoration: line-through;
       text-decoration-thickness: 1px;
     }
+    /* disponibilidad en CDMX — línea discreta bajo el precio de San Pedro */
+    .prod-cdmx-info {
+      font-size: .85rem;
+      color: var(--accent1);
+      margin: -1rem 0 1.2rem;
+    }
+    .prod-cdmx-info a { color: var(--btn); font-weight: 600; }
+
     /* chip de % junto al precio — mismo lenguaje que la etiqueta de las
        tarjetas del catálogo */
     .chip-descuento {
@@ -500,6 +508,10 @@
 
         <p class="prod-precio" id="prod-precio" style="display:none"></p>
 
+        <!-- Disponibilidad en CDMX (migración 011). Si esa sucursal oculta
+             precio, muestra un CTA de WhatsApp propio en vez de un número. -->
+        <p class="prod-cdmx-info" id="prod-cdmx-info" style="display:none"></p>
+
         <div class="prod-detalles" id="prod-detalles" style="display:none"></div>
 
         <p class="prod-descripcion" id="prod-descripcion" style="display:none"></p>
@@ -536,7 +548,7 @@
     <div class="footer-brand">
       <div class="logo-text">Muebles Rubí</div>
       <p>Artesanos de la madera desde hace más de 30 años. Piezas únicas de pino y parota, hechas a mano en San Pedro Tultepec, Lerma.</p>
-      <a href="https://wa.me/5217225723939" class="footer-cta-btn">
+      <a id="footer-escribenos-btn" href="https://wa.me/5217225723939" class="footer-cta-btn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
         ¿Tienes una idea? Hablemos
       </a>
@@ -573,7 +585,7 @@
 </footer>
 
 <!-- ══════════ WHATSAPP BUBBLE ══════════ -->
-<a href="https://wa.me/5217225723939" class="wa-bubble" aria-label="Contactar por WhatsApp" target="_blank" rel="noopener">
+<a id="wa-bubble" href="https://wa.me/5217225723939" class="wa-bubble" aria-label="Contactar por WhatsApp" target="_blank" rel="noopener">
   <svg viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
 </a>
 <div class="wa-tooltip">¡Escríbenos ahora!</div>
@@ -583,7 +595,9 @@
      CONFIGURACIÓN — un solo lugar para cambiar en producción
      ───────────────────────────────────────────────────────────── */
   const API_BASE  = '/api'           // Producción: 'https://api.galerias-rubi.com/api'
-  const WA_NUMBER = '5217225723939'
+  // Respaldo si /publico/sucursales no carga — igual que en index.html.
+  let waPrincipal = '5217225723939'
+  let waCdmx = null
 
   function fotoUrl(ruta) {
     if (!ruta) return null
@@ -747,11 +761,32 @@
       el.style.display = ''
     }
 
-    // WhatsApp — mensaje con nombre del producto
+    // WhatsApp — mensaje con nombre del producto (San Pedro, sucursal principal)
     const msg = encodeURIComponent(
       `Hola, me interesa el mueble: *${p.nombre}*. ¿Podrían darme más información y el precio actual?`
     )
-    document.getElementById('btn-wa').href = `https://wa.me/${WA_NUMBER}?text=${msg}`
+    document.getElementById('btn-wa').href = `https://wa.me/${waPrincipal}?text=${msg}`
+
+    // Disponibilidad en CDMX (migración 011): intencionalmente específico a
+    // "CDMX" — con solo 2 sucursales no vale la pena una lista genérica
+    // (mismo criterio que ProductoPublico en el backend). Si precio_cdmx es
+    // null, esa sucursal oculta el precio: se muestra un CTA de WhatsApp
+    // propio en vez de un número.
+    const cdmxInfo = document.getElementById('prod-cdmx-info')
+    if (p.disponible_cdmx) {
+      if (p.precio_cdmx != null) {
+        cdmxInfo.textContent = `También disponible en CDMX: ${formatPrecio(p.precio_cdmx)}`
+      } else if (waCdmx) {
+        const msgCdmx = encodeURIComponent(
+          `Hola, me interesa el mueble: *${p.nombre}* en la sucursal CDMX. ¿Cuál es el precio?`
+        )
+        cdmxInfo.innerHTML =
+          `También disponible en CDMX — <a href="https://wa.me/${waCdmx}?text=${msgCdmx}" target="_blank" rel="noopener">consultar precio por WhatsApp</a>`
+      } else {
+        cdmxInfo.textContent = 'También disponible en CDMX — consulta precio'
+      }
+      cdmxInfo.style.display = ''
+    }
 
     // Galería
     fotosActuales = (p.fotos || []).filter(r => fotoUrl(r))
@@ -796,14 +831,38 @@
     document.getElementById('estado-error').style.display  = ''
   }
 
+  function aplicarSucursales(sucursales) {
+    // es_principal, nunca 'nombre' (editable desde el panel) — ver el mismo
+    // comentario en index.html / _SQL_BASE en publico.py.
+    const principal = sucursales.find(s => s.es_principal) || sucursales[0]
+    if (principal?.whatsapp) {
+      waPrincipal = principal.whatsapp
+      const wa = `https://wa.me/${waPrincipal}`
+      const bubble    = document.getElementById('wa-bubble')
+      const footerBtn = document.getElementById('footer-escribenos-btn')
+      if (bubble)    bubble.href = wa
+      if (footerBtn) footerBtn.href = wa
+    }
+    // "La otra sucursal" (hoy CDMX) = la que NO es principal. Asume
+    // exactamente 2 sucursales, igual que el resto del backend.
+    const cdmx = sucursales.find(s => !s.es_principal)
+    if (cdmx?.whatsapp) waCdmx = cdmx.whatsapp
+  }
+
   async function cargar() {
     const params = new URLSearchParams(location.search)
     const id     = params.get('id')
     if (!id || isNaN(Number(id))) { mostrarError(); return }
 
     try {
-      const res = await fetch(`${API_BASE}/publico/productos/${id}`)
+      const [res, resSuc] = await Promise.all([
+        fetch(`${API_BASE}/publico/productos/${id}`),
+        fetch(`${API_BASE}/publico/sucursales`),
+      ])
       if (!res.ok) { mostrarError(); return }
+      // Sucursales es no-crítico: si falla, el producto igual se muestra
+      // con el WhatsApp de respaldo.
+      if (resSuc.ok) aplicarSucursales(await resSuc.json())
       renderProducto(await res.json())
     } catch {
       mostrarError()

@@ -244,9 +244,18 @@ function UsuarioModal({ usuarioEditando, yo, onGuardado, onCerrar }) {
   const [nombre, setNombre]       = useState(usuarioEditando?.nombre ?? '')
   const [rol, setRol]             = useState(usuarioEditando?.rol    ?? 'worker')
   const [activo, setActivo]       = useState(usuarioEditando?.activo ?? true)
+  const [sucursalId, setSucursalId] = useState(usuarioEditando?.sucursal_id ?? '')
 
   const [guardando, setGuardando] = useState(false)
   const [error, setError]         = useState(null)
+
+  const [sucursales, setSucursales] = useState([])
+  useEffect(() => {
+    apiFetch('/sucursales')
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setSucursales)
+      .catch(() => setSucursales([]))
+  }, [])
 
   const esSelf = modoEditar && usuarioEditando.id === yo.id
 
@@ -270,7 +279,10 @@ function UsuarioModal({ usuarioEditando, yo, onGuardado, onCerrar }) {
         // PUT — incluye username para permitir cambiarlo
         res = await apiFetch(`/usuarios/${usuarioEditando.id}`, {
           method: 'PUT',
-          body: JSON.stringify({ username: username.trim(), nombre: nombre.trim(), rol, activo }),
+          body: JSON.stringify({
+            username: username.trim(), nombre: nombre.trim(), rol, activo,
+            sucursal_id: sucursalId || null,
+          }),
         })
       } else {
         // POST — crear usuario nuevo
@@ -281,6 +293,7 @@ function UsuarioModal({ usuarioEditando, yo, onGuardado, onCerrar }) {
             nombre:   nombre.trim(),
             rol,
             password,
+            sucursal_id: sucursalId || null,
           }),
         })
       }
@@ -377,6 +390,26 @@ function UsuarioModal({ usuarioEditando, yo, onGuardado, onCerrar }) {
             <span className="block text-xs text-gray-400 mt-1">
               superadmin · admin · viewer (solo lectura) · worker (solo sus notas)
             </span>
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Sucursal</span>
+            <span className="block text-xs text-gray-400 mb-1.5">
+              A qué sucursal está asignado hoy. Se puede reubicar después sin
+              afectar las notas que ya vendió.
+            </span>
+            <select
+              value={sucursalId}
+              onChange={(e) => setSucursalId(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5
+                         text-sm focus:outline-none focus:ring-2 focus:ring-amber-400
+                         bg-white"
+            >
+              <option value="">— Sin sucursal —</option>
+              {sucursales.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </select>
           </label>
 
           {/* Toggle activo/inactivo — solo en modo editar */}

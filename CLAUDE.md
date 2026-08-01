@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-**Muebles Rubí** is a static landing page for a Mexican furniture craftsman, served via GitHub Pages. A PostgreSQL database (local dev on Windows, production on a Hetzner VPS running Ubuntu 24.04) stores the product catalog and order records. A Python script bridges the private DB to the public static site.
+**Muebles Rubí** is a static landing page for a Mexican furniture craftsman, served via GitHub Pages. A PostgreSQL database (local dev on Windows, production on a Hetzner VPS running Ubuntu 24.04) stores the product catalog and order records. The static site fetches the catalog live from the FastAPI backend (`GET /publico/productos`, `/publico/categorias`) — there is no static JSON bridge file.
+
+An `admin/` React (Vite) frontend already exists and is in active use (not just a future placeholder) — CRUD for notas, productos, categorías, proveedores, usuarios, plus a Recharts dashboard.
 
 ## Commands
 
@@ -16,9 +18,6 @@ venv\Scripts\activate
 
 # Install dependencies
 pip install -r api/requirements.txt
-
-# Generate the public product catalog (writes to web-publico/productos.json)
-python api/generar_json.py
 
 # Run the API
 uvicorn api.main:app --reload
@@ -95,18 +94,18 @@ Shipping with `https_only=False` means the session cookie can be sent over plain
 ### Data flow
 
 ```
-PostgreSQL DB  →  api/generar_json.py  →  web-publico/productos.json  →  index.html (GitHub Pages)
+PostgreSQL DB  →  FastAPI (GET /publico/productos, /publico/categorias)  →  index.html / producto.html (live fetch)
 ```
 
-`generar_json.py` is the publish step: run it after updating products in the DB to regenerate `productos.json`, then commit and push. The GitHub Actions workflow (`.github/workflows/deploy-pages.yml`) deploys `web-publico/` to GitHub Pages automatically on every push to `main` that touches that folder.
+The static site fetches the catalog live from the API on page load — there is no static JSON bridge file or manual publish step. The GitHub Actions workflow (`.github/workflows/deploy-pages.yml`) deploys `web-publico/` to GitHub Pages automatically on every push to `main` that touches that folder; the API itself is deployed separately to the VPS.
 
 ### Folder layout
 
 ```
 galerias-rubi/
 ├── web-publico/     ← static site → GitHub Pages
-├── api/             ← FastAPI + bridge script → VPS
-├── admin/           ← future sisters' interface → VPS
+├── api/             ← FastAPI backend → VPS
+├── admin/           ← React (Vite) admin panel → VPS
 ├── db/              ← schema.sql (source of truth)
 ├── docs/            ← diagrams and internal docs
 ├── .github/
@@ -125,24 +124,30 @@ Five tables in dependency order:
 |---|---|
 | `categorias` | Product categories; `descuento_pct` applies to all products in the category |
 | `proveedores` | Supplier names, linked per product |
-| `productos` | Master catalog. `fotos TEXT[]` stores URL/path array (first = main image). `visible_en_sitio` gates what goes into `productos.json`. Product-level `descuento_pct` overrides category-level; `NULL` means inherit. |
+| `productos` | Master catalog. `fotos TEXT[]` stores URL/path array (first = main image). `visible_en_sitio` gates what the public API exposes. Product-level `descuento_pct` overrides category-level; `NULL` means inherit. |
 | `notas` | Order header (quote/order/delivered). Client data is **denormalized** here (`nombre_cliente`, `telefono`) — no separate clients table. `folio` is a text primary key (paper receipt number, e.g. `'0986'`). `resta` is a generated column (`total - anticipo`). |
 | `partidas` | Order line items (many-to-many bridge between `notas` and `productos`). `importe` is generated (`cantidad * precio_unitario`). `producto_id` is nullable to allow one-off items not in the catalog. Cascades delete from `notas`. |
 
-> **Note:** `relational_diagramm.md` shows an older draft with a separate `CLIENTES` table. The authoritative schema is `schema.sql`.
+> **Note:** `relational_diagramm.md` shows an older draft with a separate `CLIENTES` table. The authoritative schema is `schema.sql`. The table list above is not exhaustive — `schema.sql` also has `usuarios`, `pagos`, and `movimientos_inventario` (with a trigger that derives `productos.existencias`/`fecha_ingreso`/`ubicaciones`). Treat `schema.sql` + `db/migrations/` as the source of truth over this doc for schema details.
 
 ### API layout
 
 ```
 api/
-├── main.py              ← app, middleware, auth endpoints, public catalog GETs
+├── main.py              ← app, middleware, auth endpoints, internal catalog GETs used by admin/
 ├── database.py          ← pool + get_db dependency
 ├── auth.py              ← pwd_context, UsuarioActual, get_usuario_actual, requiere_roles
 ├── routers/
-│   └── catalogo.py      ← catalog write endpoints (POST/PUT/DELETE)
-├── crear_usuario.py     ← CLI script to create admin users
-└── generar_json.py      ← publish script: DB → web-publico/productos.json
+│   ├── catalogo.py      ← catalog write endpoints (POST/PUT/DELETE) + inventory movements
+│   ├── dashboard.py     ← reporting/KPI endpoints for admin/
+│   ├── fotos.py         ← photo upload endpoints
+│   ├── notas.py         ← notas (orders/quotes) + pagos
+│   ├── publico.py       ← unauthenticated GETs consumed by web-publico/ (hides costo/existencias)
+│   └── usuarios.py      ← usuarios/vendedores CRUD (superadmin only, except /usuarios/vendedores)
+└── crear_usuario.py     ← standalone CLI script to bootstrap the first admin user (not an HTTP route)
 ```
+
+Note: `main.py` still defines its own `GET /categorias`, `/proveedores`, `/productos`, `/productos/{id}` — these are unauthenticated but are used internally by `admin/` for dropdown/picker data, not by the public site (which uses `routers/publico.py` instead). Don't assume they're dead code.
 
 ### Authentication
 
@@ -181,7 +186,15 @@ All write endpoints require roles `superadmin`, `admin`, or `worker`. Viewers ca
 
 Single self-contained file — all CSS and JS are inline, no build step, no framework.
 
-- **Catalog data** is currently hardcoded in the `products` JS array at the bottom of the file. The intent is for the site to eventually fetch `productos.json` from the DB bridge instead.
-- **WhatsApp number** placeholder is `527XXXXXXXXX` — appears in three places: `WA_NUMBER` constant, the contact section link, and the footer/bubble links. Replace all three with the real number (country code + number, no `+` or spaces).
+- **Catalog data** is fetched live from `GET /publico/productos` / `/publico/categorias` on page load (see `API_BASE` near the bottom of `index.html`/`producto.html`) — it is not hardcoded or read from a static JSON file.
+- **WhatsApp number**: loaded dynamically from `GET /publico/sucursales` on page load (`aplicarSucursales()` in both `index.html` and `producto.html`) — no longer a single hardcoded constant. `waPrincipal` (the branch with `es_principal=true`) feeds the floating bubble, footer CTA, and generic contact CTAs; the literal `wa.me/...` hrefs still baked into the HTML are only a fallback used if the API call fails.
+- **Multi-branch (migración 011)**: `sucursales` table has exactly 2 rows (San Pedro = `es_principal=true`, CDMX = `es_principal=false`). Both backend and frontend identify "the other branch" via `es_principal`, never by matching `nombre` (which is editable from `Sucursales.jsx`). This assumes exactly 2 branches — see the comment block at the top of `db/migrations/011_sucursales.sql` for what a third branch would require.
 - **Sections:** `#inicio` (hero) → `#destacados` → `#nosotros` → `#coleccion` (filterable grid) → `#amedida` (process steps) → `#testimonios` → `#contacto` (form + info).
 - Form submission (`handleFormSubmit`) and card clicks (`openWhatsApp`) both open a pre-filled WhatsApp URL — there is no backend form handler.
+
+## Pendientes técnicos
+
+Identificados durante la implementación de multi-sucursal (migración 011), deliberadamente dejados fuera de esa entrega para no mezclar una feature con un refactor de convención de todo el backend:
+
+1. **Migrar de indexado posicional (`row[0]`, `row[13]`...) a acceso por nombre de columna** en los routers de `api/`. El patrón actual rompió en silencio cuando se insertó `sucursal_id` a la mitad de `_SQL_DETALLE` en `notas.py` — todas las columnas posteriores se recorrieron un índice, y `_verificar_acceso()` habría comparado el campo equivocado sin lanzar ningún error visible. Empezar por `notas.py` (mayor riesgo: una sola query compartida por 3 endpoints con índices hardcodeados en cada uno) usando `row_factory=dict_row` de psycopg3 — no requiere librerías nuevas, es un cambio de una línea por cursor. Extender al resto de `catalogo.py`, `publico.py`, `usuarios.py`, `dashboard.py` después, archivo por archivo, verificando cada endpoint contra `/docs` antes de seguir con el siguiente.
+2. **Agregar `Depends(get_usuario_actual)` a los 4 endpoints sin autenticación en `api/main.py`**: `GET /api/productos`, `/api/productos/{id}`, `/api/categorias`, `/api/proveedores`. Hoy solo dependen de `Depends(database.get_db)` — son alcanzables sin sesión ni login, aunque el consumidor real es el panel admin (`Categorias.jsx`, `Proveedores.jsx`, `ProductoModal.jsx`, `NotaFormulario.jsx`). No exponen `costo`/`existencias`/`disponible_cdmx`/`precio_cdmx` (usan un modelo `Producto` más viejo que nunca hace join a `producto_sucursal`), así que no hay fuga de precio de sucursal — pero siguen siendo superficie pública innecesaria que debería vivir detrás de sesión igual que el resto de `/api`.

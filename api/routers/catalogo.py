@@ -56,6 +56,10 @@ class ProductoCreate(BaseModel):
     destacados: bool = False
     descuento_pct: Optional[Annotated[float, Field(ge=0, le=100)]] = None
     fotos: list[str] = []
+    # disponible_cdmx/precio_cdmx (migración 011) no son columnas de
+    # productos: viven en producto_sucursal, ver crear_producto().
+    disponible_cdmx: bool = False
+    precio_cdmx: Optional[Annotated[float, Field(ge=0)]] = None
     # existencias, fecha_ingreso y ubicaciones NO se aceptan aquí (migración
     # 010): son derivados de movimientos_inventario vía trigger. Un producto
     # nuevo arranca en existencias=0 y ubicaciones={} (defaults de columna);
@@ -78,6 +82,10 @@ class ProductoUpdate(BaseModel):
     destacados: Optional[bool]                                   = None
     descuento_pct: Optional[Annotated[float, Field(ge=0, le=100)]] = None
     fotos: Optional[list[str]] = None
+    # disponible_cdmx/precio_cdmx (migración 011) no son columnas de
+    # productos: viven en producto_sucursal, ver actualizar_producto().
+    disponible_cdmx: Optional[bool] = None
+    precio_cdmx: Optional[Annotated[float, Field(ge=0)]] = None
     # existencias, fecha_ingreso y ubicaciones deliberadamente ausentes
     # (migración 010): son derivados de movimientos_inventario vía trigger
     # — escribirlos aquí competiría con el trigger y se perdería en el
@@ -167,6 +175,8 @@ class AdminProducto(BaseModel):
     destacados: bool = False
     ubicaciones: list[str] = []
     fecha_ingreso: Optional[date] = None
+    disponible_cdmx: bool = False
+    precio_cdmx: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +194,50 @@ def _set_clause(campos: dict) -> tuple[str, list]:
     """
     partes = ", ".join(f"{col} = %s" for col in campos)
     return partes, list(campos.values())
+
+
+async def _sucursal_cdmx_id(cur) -> int:
+    """
+    Resuelve el id de "la otra sucursal" (hoy CDMX) por es_principal=false,
+    NUNCA por nombre: 'nombre' es editable desde Sucursales.jsx, así que
+    compararlo dejaría de funcionar en silencio en cuanto alguien lo
+    renombre. es_principal es la única llave estable (ver migración 011) y
+    no se expone como editable en la API a propósito.
+    ⚠️ Asume exactamente 2 sucursales — una tercera requiere refactor.
+    """
+    await cur.execute("SELECT id FROM sucursales WHERE es_principal = false")
+    row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=500, detail="Sucursal secundaria no configurada")
+    return row[0]
+
+
+async def _actualizar_disponibilidad_cdmx(cur, producto_id: int, disponible: bool, precio: Optional[float]):
+    """
+    disponible_cdmx/precio_cdmx no son columnas de productos: viven en
+    producto_sucursal (migración 011). Un producto solo tiene fila ahí
+    cuando también se vende en CDMX; si se desmarca, la fila se borra.
+    """
+    sucursal_id = await _sucursal_cdmx_id(cur)
+    if disponible:
+        if precio is None:
+            raise HTTPException(
+                status_code=422,
+                detail="precio_cdmx es obligatorio si disponible_cdmx=true",
+            )
+        await cur.execute(
+            """
+            INSERT INTO producto_sucursal (producto_id, sucursal_id, precio)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (producto_id, sucursal_id) DO UPDATE SET precio = EXCLUDED.precio
+            """,
+            (producto_id, sucursal_id, precio),
+        )
+    else:
+        await cur.execute(
+            "DELETE FROM producto_sucursal WHERE producto_id = %s AND sucursal_id = %s",
+            (producto_id, sucursal_id),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +365,11 @@ async def crear_producto(
                 ),
             )
             row = await cur.fetchone()
+
+            if data.disponible_cdmx:
+                await _actualizar_disponibilidad_cdmx(
+                    cur, row[0], True, data.precio_cdmx
+                )
         await conn.commit()
     except psycopg.errors.ForeignKeyViolation:
         raise HTTPException(
@@ -329,25 +388,37 @@ async def actualizar_producto(
     conn=Depends(get_db),
 ):
     campos = data.model_dump(exclude_unset=True)
-    if not campos:
+    disponible_cdmx = campos.pop("disponible_cdmx", None)
+    precio_cdmx = campos.pop("precio_cdmx", None)
+
+    if not campos and disponible_cdmx is None:
         raise HTTPException(status_code=422, detail="No hay campos para actualizar")
 
-    set_sql, valores = _set_clause(campos)
     try:
         async with conn.cursor() as cur:
-            await cur.execute(
-                f"UPDATE productos SET {set_sql} WHERE id = %s RETURNING id",
-                valores + [producto_id],
-            )
-            row = await cur.fetchone()
+            if campos:
+                set_sql, valores = _set_clause(campos)
+                await cur.execute(
+                    f"UPDATE productos SET {set_sql} WHERE id = %s RETURNING id",
+                    valores + [producto_id],
+                )
+                row = await cur.fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="Producto no encontrado")
+            else:
+                await cur.execute("SELECT id FROM productos WHERE id = %s", (producto_id,))
+                if await cur.fetchone() is None:
+                    raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+            if disponible_cdmx is not None:
+                await _actualizar_disponibilidad_cdmx(
+                    cur, producto_id, disponible_cdmx, precio_cdmx
+                )
     except psycopg.errors.ForeignKeyViolation:
         raise HTTPException(
             status_code=422,
             detail="categoria_id o proveedor_id no existe",
         )
-
-    if row is None:
-        raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     await conn.commit()
     return {"ok": True}
@@ -372,10 +443,21 @@ async def listar_todos_productos(
                 p.categoria_id, c.nombre AS categoria,
                 p.proveedor_id, prov.proveedor,
                 p.existencias, p.visible_en_sitio, p.ubicaciones,
-                p.fecha_ingreso, p.destacados
+                p.fecha_ingreso, p.destacados,
+                (ps.producto_id IS NOT NULL) AS disponible_cdmx,
+                ps.precio AS precio_cdmx
             FROM productos p
             LEFT JOIN categorias c    ON c.id   = p.categoria_id
             LEFT JOIN proveedores prov ON prov.id = p.proveedor_id
+            -- "la otra sucursal" por es_principal=false, no por nombre
+            -- (ver _sucursal_cdmx_id arriba). Sin filtro de activo=true a
+            -- propósito: el admin puede preparar el catálogo de CDMX
+            -- (marcar productos con el toggle) antes de activar esa
+            -- sucursal; GET /publico/productos sí filtra por activo=true
+            -- para no mostrarlo en el sitio antes de tiempo.
+            LEFT JOIN sucursales s_cdmx ON s_cdmx.es_principal = false
+            LEFT JOIN producto_sucursal ps
+                   ON ps.producto_id = p.id AND ps.sucursal_id = s_cdmx.id
             ORDER BY p.nombre
             """
         )
@@ -394,6 +476,8 @@ async def listar_todos_productos(
             "ubicaciones": r[15] or [],
             "fecha_ingreso": r[16],
             "destacados": r[17],
+            "disponible_cdmx": r[18],
+            "precio_cdmx": float(r[19]) if r[19] is not None else None,
         }
         for r in rows
     ]

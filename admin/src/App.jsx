@@ -20,6 +20,7 @@ import NotaDetalle from './pages/NotaDetalle'
 import NotaFormulario from './pages/NotaFormulario'
 import Categorias from './pages/Categorias'
 import Proveedores from './pages/Proveedores'
+import Sucursales from './pages/Sucursales'
 import Usuarios from './pages/Usuarios'
 import Historico from './pages/Historico'
 
@@ -69,6 +70,11 @@ export default function App() {
 
           <Route path="/proveedores" element={
             <RutaProtegida><Proveedores /></RutaProtegida>
+          } />
+
+          {/* Editar es solo superadmin/admin — la página misma lo verifica */}
+          <Route path="/sucursales" element={
+            <RutaProtegida><Sucursales /></RutaProtegida>
           } />
 
           {/* Solo accesible para superadmin — la página misma lo verifica */}

@@ -73,6 +73,9 @@ class UsuarioCreate(BaseModel):
     # 'password' solo existe en la entrada — nunca en la salida.
     # Pydantic valida el mínimo; el resto lo hace bcrypt.
     password: str        = Field(..., min_length=8)
+    # A qué sucursal está asignado (migración 011). Opcional: roles que no
+    # son de piso (viewer) no necesitan una.
+    sucursal_id: Optional[int] = None
 
 
 class UsuarioUpdate(BaseModel):
@@ -81,6 +84,7 @@ class UsuarioUpdate(BaseModel):
     nombre:   Optional[str]       = Field(None, min_length=1, max_length=100)
     rol:      Optional[RolValido] = None
     activo:   Optional[bool]      = None
+    sucursal_id: Optional[int]    = None
 
 
 class ResetPassword(BaseModel):
@@ -89,18 +93,26 @@ class ResetPassword(BaseModel):
 
 class UsuarioOut(BaseModel):
     """Lo que devuelven los endpoints. password_hash está ausente a propósito."""
-    id:        int
-    username:  str
-    nombre:    str
-    rol:       str
-    activo:    bool
-    creado_en: datetime
+    id:          int
+    username:    str
+    nombre:      str
+    rol:         str
+    activo:      bool
+    creado_en:   datetime
+    sucursal_id: Optional[int] = None
 
 
 class VendedorOut(BaseModel):
-    """Vista mínima para el menú de vendedores en el formulario de notas."""
-    id:     int
-    nombre: str
+    """
+    Vista mínima para el menú de vendedores en el formulario de notas.
+    sucursal_id/sucursal_nombre (migración 011) le permiten al formulario
+    mostrar de qué sucursal es cada vendedor y autocompletar la sucursal
+    de la nota al elegirlo.
+    """
+    id:              int
+    nombre:          str
+    sucursal_id:     Optional[int] = None
+    sucursal_nombre: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -108,14 +120,17 @@ class VendedorOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _fila_a_usuario(r) -> dict:
-    """Convierte una fila SQL en dict listo para UsuarioOut."""
+    """Convierte una fila SQL en dict listo para UsuarioOut.
+    Espera las columnas en el orden: id, username, nombre, rol, activo,
+    creado_en, sucursal_id."""
     return {
-        "id":        r[0],
-        "username":  r[1],
-        "nombre":    r[2],
-        "rol":       r[3],
-        "activo":    r[4],
-        "creado_en": r[5],
+        "id":          r[0],
+        "username":    r[1],
+        "nombre":      r[2],
+        "rol":         r[3],
+        "activo":      r[4],
+        "creado_en":   r[5],
+        "sucursal_id": r[6],
     }
 
 
@@ -192,12 +207,19 @@ async def listar_vendedores(
 ):
     async with conn.cursor() as cur:
         await cur.execute(
-            "SELECT id, nombre FROM usuarios "
-            "WHERE activo = true "
-            "ORDER BY nombre"
+            """
+            SELECT u.id, u.nombre, u.sucursal_id, s.nombre AS sucursal_nombre
+            FROM   usuarios u
+            LEFT   JOIN sucursales s ON s.id = u.sucursal_id
+            WHERE  u.activo = true
+            ORDER  BY u.nombre
+            """
         )
         rows = await cur.fetchall()
-    return [{"id": r[0], "nombre": r[1]} for r in rows]
+    return [
+        {"id": r[0], "nombre": r[1], "sucursal_id": r[2], "sucursal_nombre": r[3]}
+        for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +235,7 @@ async def listar_usuarios(
         await cur.execute(
             # password_hash deliberadamente omitido del SELECT
             """
-            SELECT id, username, nombre, rol, activo, creado_en
+            SELECT id, username, nombre, rol, activo, creado_en, sucursal_id
             FROM   usuarios
             ORDER  BY creado_en, id
             """
@@ -240,11 +262,11 @@ async def crear_usuario(
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                INSERT INTO usuarios (username, nombre, rol, password_hash)
-                VALUES (%s, %s, %s, %s)
-                RETURNING id, username, nombre, rol, activo, creado_en
+                INSERT INTO usuarios (username, nombre, rol, password_hash, sucursal_id)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, username, nombre, rol, activo, creado_en, sucursal_id
                 """,
-                (data.username, data.nombre, data.rol, password_hash),
+                (data.username, data.nombre, data.rol, password_hash, data.sucursal_id),
             )
             row = await cur.fetchone()
         await conn.commit()
@@ -290,7 +312,7 @@ async def editar_usuario(
         # Nada que cambiar: devolver el usuario tal como está sin tocar la DB.
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT id, username, nombre, rol, activo, creado_en "
+                "SELECT id, username, nombre, rol, activo, creado_en, sucursal_id "
                 "FROM usuarios WHERE id = %s",
                 (id_objetivo,),
             )
@@ -318,7 +340,7 @@ async def editar_usuario(
         async with conn.cursor() as cur:
             await cur.execute(
                 f"UPDATE usuarios SET {', '.join(columnas)} WHERE id = %s "
-                "RETURNING id, username, nombre, rol, activo, creado_en",
+                "RETURNING id, username, nombre, rol, activo, creado_en, sucursal_id",
                 valores,
             )
             row_actualizado = await cur.fetchone()

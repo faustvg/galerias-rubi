@@ -107,6 +107,11 @@ class NotaCreate(BaseModel):
     # resuelve en vivo desde usuarios.nombre, así que un cambio de nombre se
     # refleja de inmediato en notas pasadas.
     vendedor_id:     Optional[int] = None
+    # sucursal_id (migración 011): la sucursal de ESTA venta, congelada al
+    # crear la nota. Si no se manda explícito, crear_nota() la toma del
+    # sucursal_id ACTUAL del vendedor elegido — pero queda disponible aquí
+    # para permitir un override manual desde el formulario.
+    sucursal_id:     Optional[int] = None
     nombre_cliente:  Optional[str] = None
     telefono:        Optional[str] = None
     consideraciones: Optional[str] = None
@@ -128,6 +133,7 @@ class NotaUpdate(BaseModel):
     total:           Optional[float] = Field(None, ge=0)
     anticipo:        Optional[float] = Field(None, ge=0)
     vendedor_id:     Optional[int] = None
+    sucursal_id:     Optional[int] = None
     nombre_cliente:  Optional[str] = None
     telefono:        Optional[str] = None
     consideraciones: Optional[str] = None
@@ -188,6 +194,7 @@ class NotaDetalle(BaseModel):
     resta:           float
     vendedor:        Optional[str]   # nombre a mostrar: en vivo si hay vendedor_id, si no el texto histórico
     vendedor_id:     Optional[int]
+    sucursal_id:     Optional[int]   # sucursal de ESTA venta, congelada al crear la nota
     nombre_cliente:  Optional[str]
     telefono:        Optional[str]
     consideraciones: Optional[str]
@@ -340,12 +347,13 @@ def _fila_a_detalle(r) -> dict:
         "resta":           float(r[6] or 0),
         "vendedor":        r[7],
         "vendedor_id":     r[8],
-        "nombre_cliente":  r[9],
-        "telefono":        r[10],
-        "consideraciones": r[11],
-        "foto_nota":       r[12],
-        "usuario_id":      r[13],
-        "nombre_usuario":  r[14],
+        "sucursal_id":     r[9],
+        "nombre_cliente":  r[10],
+        "telefono":        r[11],
+        "consideraciones": r[12],
+        "foto_nota":       r[13],
+        "usuario_id":      r[14],
+        "nombre_usuario":  r[15],
     }
 
 
@@ -437,6 +445,7 @@ _SQL_DETALLE = """
         n.folio, n.fecha_pedido, n.fecha_entrega, n.estatus,
         n.total, n.anticipo, n.resta,
         COALESCE(uv.nombre, n.vendedor) AS vendedor, n.vendedor_id,
+        n.sucursal_id,
         n.nombre_cliente, n.telefono,
         n.consideraciones, n.foto_nota,
         n.usuario_id, u.nombre AS nombre_usuario
@@ -460,13 +469,27 @@ async def crear_nota(
     folio = await _generar_folio(conn)
 
     async with conn.cursor() as cur:
+        # sucursal_id: si no vino explícito en el body, se congela aquí del
+        # sucursal_id ACTUAL del vendedor elegido — no un JOIN en vivo como
+        # vendedor_id, sino una copia al momento de crear la nota, para que
+        # una reubicación futura del vendedor no reescriba ventas pasadas.
+        sucursal_id = data.sucursal_id
+        if sucursal_id is None and data.vendedor_id is not None:
+            await cur.execute(
+                "SELECT sucursal_id FROM usuarios WHERE id = %s",
+                (data.vendedor_id,),
+            )
+            fila_vendedor = await cur.fetchone()
+            if fila_vendedor is not None:
+                sucursal_id = fila_vendedor[0]
+
         await cur.execute(
             """
             INSERT INTO notas
               (folio, fecha_pedido, fecha_entrega, estatus, total, anticipo,
                vendedor_id, nombre_cliente, telefono, consideraciones, foto_nota,
-               usuario_id)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               usuario_id, sucursal_id)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
                 folio,
@@ -481,6 +504,7 @@ async def crear_nota(
                 data.consideraciones,
                 data.foto_nota,
                 usuario.id,
+                sucursal_id,
             ),
         )
 
@@ -510,6 +534,7 @@ async def crear_nota(
 async def listar_notas(
     # Filtros backend — se combinan con AND; todos son opcionales
     vendedor_id: Optional[int]  = Query(None, description="Filtrar por vendedor_id (usuario que hizo la venta)"),
+    sucursal_id: Optional[int]  = Query(None, description="Filtrar por sucursal_id (sucursal donde ocurrió la venta)"),
     fecha_desde: Optional[date] = Query(None, description="Fecha de pedido desde (inclusive)"),
     fecha_hasta: Optional[date] = Query(None, description="Fecha de pedido hasta (inclusive)"),
     busqueda:    Optional[str]  = Query(None, description="Búsqueda en modificaciones y consideraciones"),
@@ -573,6 +598,10 @@ async def listar_notas(
         conditions.append("n.vendedor_id = %s")
         params.append(vendedor_id)
 
+    if sucursal_id is not None:
+        conditions.append("n.sucursal_id = %s")
+        params.append(sucursal_id)
+
     if fecha_desde is not None:
         conditions.append("n.fecha_pedido >= %s")
         params.append(fecha_desde)
@@ -624,8 +653,8 @@ async def obtener_nota(
     if row is None:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
 
-    # row[13] = usuario_id de la nota
-    _verificar_acceso(usuario, row[13])
+    # row[14] = usuario_id de la nota (ver _SQL_DETALLE)
+    _verificar_acceso(usuario, row[14])
 
     async with conn.cursor() as cur:
         await cur.execute(_SQL_PARTIDAS, (folio,))
@@ -1051,7 +1080,7 @@ async def generar_pdf_nota(
     if row is None:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
 
-    _verificar_acceso(usuario, row[13])   # row[13] = usuario_id de la nota
+    _verificar_acceso(usuario, row[14])   # row[14] = usuario_id de la nota (ver _SQL_DETALLE)
 
     async with conn.cursor() as cur:
         await cur.execute(_SQL_PARTIDAS, (folio,))
@@ -1151,7 +1180,7 @@ async def enviar_nota_email(
     if row is None:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
 
-    _verificar_acceso(usuario, row[13])   # row[13] = usuario_id de la nota
+    _verificar_acceso(usuario, row[14])   # row[14] = usuario_id de la nota (ver _SQL_DETALLE)
 
     async with conn.cursor() as cur:
         await cur.execute(_SQL_PARTIDAS, (folio,))

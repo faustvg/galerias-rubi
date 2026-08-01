@@ -71,6 +71,7 @@ const CABECERA_INICIAL = {
   fecha_pedido: hoy(),
   fecha_entrega: '',
   vendedor_id: '',
+  sucursal_id: '',
   total: '',
   anticipo: '',
   estatus: 'Presupuesto',
@@ -113,6 +114,7 @@ export default function NotaFormulario() {
   // Datos de referencia que se cargan una vez al montar
   const [vendedores, setVendedores]   = useState([])
   const [productos,  setProductos]    = useState([])
+  const [sucursales, setSucursales]   = useState([])
 
   // Control de la UI
   const [cargando,  setCargando]  = useState(true)
@@ -144,21 +146,24 @@ export default function NotaFormulario() {
       setCargando(true)
       setError(null)
       try {
-        // Cargar vendedores y productos en paralelo — son independientes entre sí
-        const [resV, resP] = await Promise.all([
+        // Cargar vendedores, productos y sucursales en paralelo — independientes entre sí
+        const [resV, resP, resS] = await Promise.all([
           apiFetch('/usuarios/vendedores'),
           apiFetch('/productos'),
+          apiFetch('/sucursales'),
         ])
 
-        if (resV.status === 401 || resP.status === 401) {
+        if (resV.status === 401 || resP.status === 401 || resS.status === 401) {
           await logout(); navigate('/login'); return
         }
         if (!resV.ok) throw new Error('No se pudo cargar la lista de vendedores.')
         if (!resP.ok) throw new Error('No se pudo cargar los productos.')
+        if (!resS.ok) throw new Error('No se pudo cargar las sucursales.')
 
-        const [dataV, dataP] = await Promise.all([resV.json(), resP.json()])
+        const [dataV, dataP, dataS] = await Promise.all([resV.json(), resP.json(), resS.json()])
         setVendedores(dataV)
         setProductos(dataP)
+        setSucursales(dataS)
 
         // En modo edición, cargar la nota existente (secuencial: depende de los datos base)
         if (modoEdicion) {
@@ -188,6 +193,7 @@ export default function NotaFormulario() {
             fecha_pedido:    nota.fecha_pedido    || hoy(),
             fecha_entrega:   nota.fecha_entrega   || '',
             vendedor_id:     nota.vendedor_id != null ? String(nota.vendedor_id) : '',
+            sucursal_id:     nota.sucursal_id != null ? String(nota.sucursal_id) : '',
             total:           nota.total    != null ? String(nota.total)    : '',
             anticipo:        nota.anticipo != null ? String(nota.anticipo) : '',
             estatus:         nota.estatus,
@@ -227,6 +233,18 @@ export default function NotaFormulario() {
     if (campo === 'estatus' && valor !== 'Entregado') {
       setConfirmarEntrega(false)
     }
+  }
+
+  // Al elegir vendedor, autocompletar Sucursal con la sucursal ACTUAL de ese
+  // vendedor — el campo queda editable después por si la venta fue en otra
+  // sucursal (ver comentario junto al <select> de Vendedor).
+  function handleVendedorChange(vendedorId) {
+    const v = vendedores.find(x => String(x.id) === String(vendedorId))
+    setCabecera(prev => ({
+      ...prev,
+      vendedor_id: vendedorId,
+      sucursal_id: v?.sucursal_id != null ? String(v.sucursal_id) : prev.sucursal_id,
+    }))
   }
 
   // AGREGAR: añade un objeto nuevo al final del array
@@ -273,6 +291,7 @@ export default function NotaFormulario() {
       fecha_pedido:    cabecera.fecha_pedido          || hoy(),
       fecha_entrega:   cabecera.fecha_entrega         || null,
       vendedor_id:     cabecera.vendedor_id ? Number(cabecera.vendedor_id) : null,
+      sucursal_id:     cabecera.sucursal_id ? Number(cabecera.sucursal_id) : null,
       total:           Math.max(0, Number(cabecera.total)    || 0),
       anticipo:        Math.max(0, Number(cabecera.anticipo) || 0),
       estatus:         cabecera.estatus,
@@ -416,15 +435,24 @@ export default function NotaFormulario() {
                   (empleado desactivado, dato histórico), se agrega como
                   opción extra al final usando el nombre que ya resolvió el
                   backend (vendedorHistorico).
+
+                  Al elegir un vendedor, la Sucursal de abajo se autocompleta
+                  con la sucursal ACTUAL de ese vendedor (handleVendedorChange)
+                  — pero queda editable por si la venta ocurrió en otra
+                  sucursal. A diferencia de vendedor_id, sucursal_id se
+                  CONGELA al guardar la nota: si el vendedor se reubica
+                  después, esta nota ya guardada no cambia.
                 */}
                 <select
                   value={cabecera.vendedor_id}
-                  onChange={e => handleCampo('vendedor_id', e.target.value)}
+                  onChange={e => handleVendedorChange(e.target.value)}
                   className={estiloInput}
                 >
                   <option value="">— Sin vendedor —</option>
                   {vendedores.map(v => (
-                    <option key={v.id} value={v.id}>{v.nombre}</option>
+                    <option key={v.id} value={v.id}>
+                      {v.nombre}{v.sucursal_nombre ? ` — ${v.sucursal_nombre}` : ''}
+                    </option>
                   ))}
                   {cabecera.vendedor_id &&
                    !vendedores.some(v => String(v.id) === String(cabecera.vendedor_id)) && (
@@ -432,6 +460,18 @@ export default function NotaFormulario() {
                       {vendedorHistorico} (ya no está en el sistema)
                     </option>
                   )}
+                </select>
+              </Campo>
+              <Campo label="Sucursal">
+                <select
+                  value={cabecera.sucursal_id}
+                  onChange={e => handleCampo('sucursal_id', e.target.value)}
+                  className={estiloInput}
+                >
+                  <option value="">— Sin sucursal —</option>
+                  {sucursales.map(s => (
+                    <option key={s.id} value={s.id}>{s.nombre}</option>
+                  ))}
                 </select>
               </Campo>
               <Campo label="Estatus">
