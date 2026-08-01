@@ -507,6 +507,41 @@
       border-color: var(--text);
     }
 
+    /* ── Filtro "Disponible en CDMX" ──
+       Deliberadamente NO es un .tab-btn más: pill redondeado + color de
+       acento distinto (accent1, el mismo de .badge-cdmx) en vez del
+       rectángulo oscuro de los tabs de categoría. Es un filtro que se
+       COMBINA con la categoría activa, no una alternativa a "Todos". */
+    .coleccion-filtro-sucursal {
+      display: flex;
+      justify-content: center;
+      margin: -2.5rem 0 3.5rem;
+    }
+    .filtro-cdmx-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      font-family: var(--sans);
+      font-size: .7rem;
+      font-weight: 400;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      background: transparent;
+      border: 1px solid var(--accent1);
+      color: var(--accent1);
+      border-radius: 999px;
+      padding: .5rem 1.15rem;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .filtro-cdmx-btn svg { flex-shrink: 0; }
+    .filtro-cdmx-btn:hover { background: rgba(135,147,123,.12); }
+    .filtro-cdmx-btn[aria-pressed="true"] {
+      background: var(--accent1);
+      color: var(--white);
+      border-color: var(--accent1);
+    }
+
     .catalog-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -1189,6 +1224,15 @@
     <!-- Categorías cargadas dinámicamente desde /publico/categorias -->
   </div>
 
+  <!-- Filtro aparte, se combina con la categoría activa (no reemplaza
+       "Todos" ni es un tab más — ver comentario en el CSS). -->
+  <div class="coleccion-filtro-sucursal">
+    <button type="button" id="filtro-cdmx-btn" class="filtro-cdmx-btn" aria-pressed="false">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+      Disponible en CDMX
+    </button>
+  </div>
+
   <div class="catalog-grid" id="catalog-grid">
     <!-- Cards injected by JS from data below -->
   </div>
@@ -1495,12 +1539,15 @@
      el conteo a 8. ── */
   const TAM_PAGINA = 8
   let filtroActual = null
+  let filtroCdmx   = false   // filtro aparte, se combina (AND) con filtroActual
   let numVisibles  = TAM_PAGINA
 
   function _itemsFiltrados() {
-    return filtroActual === null
+    let items = filtroActual === null
       ? allProducts
       : allProducts.filter(p => p.categoria_id === filtroActual)
+    if (filtroCdmx) items = items.filter(p => p.disponible_cdmx === true)
+    return items
   }
 
   function _cardCatalogo(p) {
@@ -1564,17 +1611,23 @@
   }
   document.getElementById('btn-ver-mas').addEventListener('click', verMasPiezas)
 
-  // Refleja la categoría activa en la URL (?categoria=ID) sin recargar la
-  // página. replaceState (no pushState): un clic en un tab no debe apilar
-  // una entrada de historial por cada filtro — solo queremos que la URL
-  // ACTUAL sea correcta para que "atrás" desde producto.html regrese aquí
-  // con el filtro correcto ya aplicado al cargar.
-  function _actualizarURLCategoria(filtro) {
+  // Refleja categoría (?categoria=ID) Y el filtro de sucursal (?sucursal=cdmx)
+  // en la URL sin recargar la página — combinables, ej. ?categoria=1&sucursal=cdmx.
+  // replaceState (no pushState): un clic no debe apilar una entrada de
+  // historial por cada filtro — solo queremos que la URL ACTUAL sea correcta,
+  // tanto para "atrás" desde producto.html como para que un link/QR con
+  // ?sucursal=cdmx aterrice directo en la vista filtrada (_aplicarFiltroInicial).
+  function _actualizarURL() {
     const url = new URL(location.href)
-    if (filtro === null) {
+    if (filtroActual === null) {
       url.searchParams.delete('categoria')
     } else {
-      url.searchParams.set('categoria', filtro)
+      url.searchParams.set('categoria', filtroActual)
+    }
+    if (filtroCdmx) {
+      url.searchParams.set('sucursal', 'cdmx')
+    } else {
+      url.searchParams.delete('sucursal')
     }
     history.replaceState(null, '', url)
   }
@@ -1583,8 +1636,18 @@
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     renderCatalog(filtro)
-    _actualizarURLCategoria(filtro)
+    _actualizarURL()
   }
+
+  // Toggle independiente de la categoría — por eso no vive en filterCatalog
+  // ni pisa el estado de los tabs.
+  function toggleFiltroCdmx() {
+    filtroCdmx = !filtroCdmx
+    document.getElementById('filtro-cdmx-btn').setAttribute('aria-pressed', String(filtroCdmx))
+    renderCatalog(filtroActual)
+    _actualizarURL()
+  }
+  document.getElementById('filtro-cdmx-btn').addEventListener('click', toggleFiltroCdmx)
 
   /* ── "Lo más buscado" — curado a mano desde el panel (productos.destacados),
      no automático. Si nadie marcó nada todavía, la sección completa se
@@ -1668,8 +1731,20 @@
   // a ningún tab renderizado (categoría sin productos visibles, o id
   // inválido), simplemente se queda en "Todos" — ya está activo por
   // defecto desde renderTabs.
+  //
+  // ?sucursal=cdmx se lee ANTES de aplicar la categoría, para que ambos
+  // filtros ya estén activos cuando renderCatalog corre la primera vez —
+  // así un link/QR compartido con ?categoria=1&sucursal=cdmx aterriza con
+  // los dos combinados de una, sin que el usuario toque nada.
   function _aplicarFiltroInicial() {
-    const idParam = new URLSearchParams(location.search).get('categoria')
+    const params = new URLSearchParams(location.search)
+
+    if (params.get('sucursal') === 'cdmx') {
+      filtroCdmx = true
+      document.getElementById('filtro-cdmx-btn').setAttribute('aria-pressed', 'true')
+    }
+
+    const idParam = params.get('categoria')
     // Solo dígitos: los id de categoría son enteros — descarta cualquier
     // otra cosa antes de meterla en un selector CSS.
     if (idParam && /^\d+$/.test(idParam)) {
