@@ -1,0 +1,449 @@
+MUEBLES RUBÍ — Respuesta a 4 preguntas puntuales sobre la implementación de sucursales
+Generado: 2026-08-01
+====================================================================================
+
+
+1) SQL COMPLETO Y FINAL — db/migrations/011_sucursales.sql
+====================================================================================
+
+-- ============================================================
+--  Migración 011 — sucursales
+--
+--  CONTEXTO: el negocio agrega una segunda ubicación de venta,
+--  Muebles Local No.17 en CDMX (entidad legal distinta de Muebles
+--  Rubí / San Pedro Tultepec, aunque mismo taller/familia). CDMX
+--  vende solo un subconjunto del catálogo, con precio propio por
+--  transporte/renta, y la familia quiere poder ocultar el precio
+--  de CDMX en el sitio público (mostrar WhatsApp en su lugar) sin
+--  tocar producto por producto.
+--
+--  OJO — 'sucursal' NO es lo mismo que 'ubicacion':
+--  productos.ubicaciones (migración 003, ahora derivado por trigger
+--  en la 010) es bodega/logística interna ("Local Mexico", "Almacen",
+--  etc.), no sucursal de venta. Son conceptos distintos a propósito;
+--  por eso esta migración usa 'sucursal_id', nunca 'ubicacion_id'.
+--
+--  DISEÑO:
+--   - sucursales: catálogo cerrado de las 2 ubicaciones de venta.
+--     'ocultar_precio_publico' es la decisión a nivel de sucursal
+--     completa (no por producto) de mostrar precio o CTA de WhatsApp.
+--   - usuarios.sucursal_id: a qué sucursal está asignado hoy un
+--     vendedor. Se puede reubicar sin afectar notas pasadas (ver
+--     siguiente punto) — mismo patrón que vendedor_id/vendedor en la
+--     migración 005 (enlace estructurado, resuelto en tiempo real).
+--   - notas.sucursal_id: la sucursal de LA VENTA, congelada al crear
+--     la nota (se copia del sucursal_id del vendedor en ese momento).
+--     Si el vendedor se reubica después, las notas viejas NO cambian
+--     — mismo principio de "no reescribir historia" que fecha_ingreso
+--     y que vendedor_id resuelve para el nombre del vendedor.
+--   - producto_sucursal: solo tiene fila cuando un producto TAMBIÉN
+--     se vende en una sucursal distinta de San Pedro, con su propio
+--     precio. San Pedro sigue usando productos.precio_base tal cual
+--     — cero backfill, cero riesgo sobre el catálogo existente.
+--
+--  BACKFILL: ninguno para notas.sucursal_id — no hay forma confiable
+--  de saber a qué sucursal pertenece cada nota histórica, y no es
+--  decisión de esta migración inventarlo. Quedan en NULL; la familia
+--  decide si vale la pena reclasificarlas a mano desde el panel.
+-- ============================================================
+
+CREATE TABLE sucursales (
+    id                     SERIAL PRIMARY KEY,
+    nombre                 VARCHAR(100) NOT NULL,      -- "San Pedro Tultepec", "Ciudad de México"
+    razon_social           VARCHAR(150) NOT NULL,       -- "Muebles Rubí", "Muebles Local No.17"
+    direccion              TEXT,
+    maps_url               TEXT,
+    whatsapp               VARCHAR(20),
+    ocultar_precio_publico BOOLEAN NOT NULL DEFAULT false,
+    activo                 BOOLEAN NOT NULL DEFAULT true
+);
+
+-- Seed con lo que ya está publicado hoy en el sitio para San Pedro.
+-- CDMX queda con datos placeholder y activo=false hasta que la
+-- familia complete dirección/maps real y la active desde el panel
+-- (Sucursales.jsx) — no es esta migración quien debe inventarlos.
+INSERT INTO sucursales (nombre, razon_social, direccion, maps_url, whatsapp, ocultar_precio_publico, activo) VALUES
+  ('San Pedro Tultepec', 'Muebles Rubí',
+   'C. Benito Juárez 73, C. Benito Juárez Manzana 033, 52030 San Pedro Tultepec, Lerma, Estado de México',
+   NULL, '5217225723939', false, true),
+  ('Ciudad de México', 'Muebles Local No.17',
+   'PENDIENTE — completar desde el panel', NULL, NULL, true, false);
+
+ALTER TABLE usuarios
+    ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id) ON DELETE SET NULL;
+
+ALTER TABLE notas
+    ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id) ON DELETE SET NULL;
+
+CREATE TABLE producto_sucursal (
+    producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    sucursal_id INTEGER NOT NULL REFERENCES sucursales(id) ON DELETE CASCADE,
+    precio      NUMERIC(10,2) NOT NULL,
+    PRIMARY KEY (producto_id, sucursal_id)
+);
+
+
+2) EL BUG row[13] → row[14] EN notas.py — ANTES / DESPUÉS + MI OPINIÓN
+====================================================================================
+
+QUÉ PASÓ:
+_SQL_DETALLE es una sola consulta SQL compartida por tres endpoints distintos
+(obtener_nota, generar_pdf_nota, enviar_nota_email). Cada uno lee columnas del
+resultado por posición numérica (row[8], row[13], etc.), no por nombre. Al
+agregar "n.sucursal_id" a la mitad del SELECT (después de vendedor_id, antes
+de nombre_cliente), TODAS las columnas que venían después se recorrieron una
+posición. Si no lo hubiera revisado, los tres endpoints habrían seguido
+leyendo row[13] esperando usuario_id, pero ahí ahora está sucursal_id — esto
+habría roto la verificación de acceso (_verificar_acceso) de forma silenciosa:
+sin error visible, pero comparando el sucursal_id de la nota contra el id de
+usuario logueado, lo cual nunca coincide, así que en la práctica un worker
+habría perdido acceso a TODAS sus propias notas (404/403 falsos) apenas se
+aplicara esta migración.
+
+--- ANTES (código original, previo a esta ronda de cambios) ---
+
+_SQL_DETALLE = """
+    SELECT
+        n.folio, n.fecha_pedido, n.fecha_entrega, n.estatus,
+        n.total, n.anticipo, n.resta,
+        COALESCE(uv.nombre, n.vendedor) AS vendedor, n.vendedor_id,
+        n.nombre_cliente, n.telefono,
+        n.consideraciones, n.foto_nota,
+        n.usuario_id, u.nombre AS nombre_usuario
+    FROM  notas    n
+    LEFT  JOIN usuarios u  ON u.id  = n.usuario_id
+    LEFT  JOIN usuarios uv ON uv.id = n.vendedor_id
+    WHERE n.folio = %s
+"""
+
+def _fila_a_detalle(r) -> dict:
+    return {
+        "folio":           r[0],
+        "fecha_pedido":    r[1],
+        "fecha_entrega":   r[2],
+        "estatus":         r[3],
+        "total":           float(r[4] or 0),
+        "anticipo":        float(r[5] or 0),
+        "resta":           float(r[6] or 0),
+        "vendedor":        r[7],
+        "vendedor_id":     r[8],
+        "nombre_cliente":  r[9],
+        "telefono":        r[10],
+        "consideraciones": r[11],
+        "foto_nota":       r[12],
+        "usuario_id":      r[13],
+        "nombre_usuario":  r[14],
+    }
+
+# En obtener_nota(), generar_pdf_nota(), enviar_nota_email() (3 lugares):
+    # row[13] = usuario_id de la nota
+    _verificar_acceso(usuario, row[13])
+
+
+--- DESPUÉS (con sucursal_id agregado y el índice corregido) ---
+
+_SQL_DETALLE = """
+    SELECT
+        n.folio, n.fecha_pedido, n.fecha_entrega, n.estatus,
+        n.total, n.anticipo, n.resta,
+        COALESCE(uv.nombre, n.vendedor) AS vendedor, n.vendedor_id,
+        n.sucursal_id,
+        n.nombre_cliente, n.telefono,
+        n.consideraciones, n.foto_nota,
+        n.usuario_id, u.nombre AS nombre_usuario
+    FROM  notas    n
+    LEFT  JOIN usuarios u  ON u.id  = n.usuario_id
+    LEFT  JOIN usuarios uv ON uv.id = n.vendedor_id
+    WHERE n.folio = %s
+"""
+
+def _fila_a_detalle(r) -> dict:
+    return {
+        "folio":           r[0],
+        "fecha_pedido":    r[1],
+        "fecha_entrega":   r[2],
+        "estatus":         r[3],
+        "total":           float(r[4] or 0),
+        "anticipo":        float(r[5] or 0),
+        "resta":           float(r[6] or 0),
+        "vendedor":        r[7],
+        "vendedor_id":     r[8],
+        "sucursal_id":     r[9],
+        "nombre_cliente":  r[10],
+        "telefono":        r[11],
+        "consideraciones": r[12],
+        "foto_nota":       r[13],
+        "usuario_id":      r[14],
+        "nombre_usuario":  r[15],
+    }
+
+# En los mismos 3 lugares:
+    # row[14] = usuario_id de la nota (ver _SQL_DETALLE)
+    _verificar_acceso(usuario, row[14])
+
+Verificación aplicada: grep de "row[9]" a "row[15]" en todo notas.py después
+del cambio — los tres call sites y _fila_a_detalle son los únicos lugares que
+tocan esos índices, y los tres quedaron consistentes en row[14].
+
+
+MI OPINIÓN — ¿vale la pena migrar a acceso por nombre de columna?
+
+Sí, mi recomendación es hacerlo, pero como una tarea aparte, no metida en
+esta migración. Razones:
+
+  A FAVOR:
+  - Este bug es exactamente el tipo de error que el indexado posicional
+    invita: agregar UNA columna a la mitad de un SELECT compartido por
+    varios endpoints rompió silenciosamente el control de acceso. No lanzó
+    excepción, no falló ningún test — simplemente habría empezado a
+    comparar el número equivocado. Ese es el peor tipo de bug: silencioso
+    y de seguridad/permisos.
+  - psycopg3 (que ya usa este proyecto) trae row_factory=dict_row de forma
+    nativa — es un cambio de una línea por cursor (`conn.cursor(row_factory=
+    dict_row)`), no requiere librerías nuevas ni cambiar el driver.
+  - Con dict_row, row["usuario_id"] es autodocumentado y sobrevive a
+    cualquier reordenamiento de columnas en el SELECT — la clase completa
+    de bugs desaparece.
+
+  EN CONTRA / por qué no hacerlo ahora mismo:
+  - El patrón de indexado posicional (r[0], r[1], r[2]...) está repetido en
+    decenas de funciones a lo largo de catalogo.py, notas.py, publico.py,
+    usuarios.py y dashboard.py — no es un cambio aislado, es un refactor
+    real que toca casi todos los routers.
+  - notas.py en particular tiene el patrón MÁS frágil (una sola query
+    compartida por tres endpoints con índices hardcodeados en cada uno) —
+    es también el archivo donde el refactor tiene más riesgo de introducir
+    un error nuevo si se hace apurado, junto con la migración de sucursales
+    en el mismo PR.
+  - Mezclar "agregar una feature" con "refactor de una convención de todo
+    el backend" en el mismo cambio dificulta revisar cuál de los dos
+    introdujo un problema si algo falla.
+
+  RECOMENDACIÓN CONCRETA: como tarea separada (no ahora), empezar por
+  notas.py — es el archivo de mayor riesgo por tener la query compartida
+  entre 3 endpoints. Migrar función por función a dict_row, verificando cada
+  endpoint manualmente contra la API real (Swagger /docs) antes de pasar al
+  siguiente archivo. No se necesita adoptar Pydantic ni un ORM para esto —
+  dict_row solo ya elimina el riesgo específico que causó este bug.
+
+
+3) ¿GET /api/productos REQUIERE LOGIN? — CONFIRMACIÓN EXPLÍCITA
+====================================================================================
+
+NO. Confirmado leyendo api/main.py línea por línea (no es una suposición):
+
+    @api_router.get("/categorias", response_model=list[Categoria])
+    async def listar_categorias(conn=Depends(database.get_db)):
+        ...
+
+    @api_router.get("/proveedores", response_model=list[Proveedor])
+    async def listar_proveedores(conn=Depends(database.get_db)):
+        ...
+
+    @api_router.get("/productos", response_model=list[Producto])
+    async def listar_productos(
+        categoria_id: Optional[int] = Query(None, ...),
+        conn=Depends(database.get_db),
+    ):
+        ...
+
+    @api_router.get("/productos/{producto_id}", response_model=Producto)
+    async def obtener_producto(producto_id: int, conn=Depends(database.get_db)):
+        ...
+
+Los CUATRO endpoints solo dependen de `Depends(database.get_db)` (la conexión
+a la base de datos). Ninguno tiene `Depends(get_usuario_actual)` ni
+`requiere_roles(...)`. Compáralo con, por ejemplo, POST /productos en
+catalogo.py, que sí tiene `_usuario: UsuarioActual = requiere_roles(...)`.
+
+En la práctica: cualquiera con la URL (sin sesión, sin cookie, sin login)
+puede hacer GET a /api/productos, /api/categorias, /api/proveedores,
+/api/productos/{id} ahora mismo, igual que a /api/publico/productos. Es
+"público" en el sentido literal de no exigir autenticación — el nombre del
+endpoint (sin el prefijo /publico) es lo único que sugiere lo contrario, y
+por eso el hallazgo original de la auditoría lo describió así.
+
+Corrijo lo que dije en mi resumen anterior: cuando escribí "usado
+internamente por el admin", me refería a QUIÉN lo consume en la práctica
+(el frontend del panel), no a que esté protegido por autenticación — nunca
+dije que tuviera guardas de rol, pero tampoco lo aclaré con esta precisión,
+y tu pregunta tiene razón en pedir la confirmación explícita.
+
+¿ES UNA FUGA relacionada con el trabajo de sucursales que acabamos de hacer?
+No de precio/CDMX específicamente: este endpoint usa el modelo Producto
+viejo (id, nombre, descripcion, precio, descuento_pct, fotos, color,
+material, categoria_id, categoria) — NO incluye disponible_cdmx ni
+precio_cdmx, porque nunca se hizo JOIN a producto_sucursal aquí. Así que NO
+expone el precio que la sucursal CDMX decida ocultar.
+
+Sí sigue siendo un problema de superficie/duplicación real y preexistente
+(no creado por esta migración, pero tampoco resuelto por ella): expone el
+mismo catálogo que /publico/productos pero con un shape distinto y sin
+necesidad de autenticarse, cuando conceptualmente estos 4 endpoints (usados
+solo por el panel admin) deberían vivir detrás de sesión igual que el resto
+de /api. No lo toqué en esta ronda porque tocar auth de un endpoint que el
+admin ya usa en producción no estaba en el alcance que pediste ("solo
+inventario" en la auditoría original, y luego el foco fue sucursales) — pero
+avísame si quieres que lo arregle (agregar Depends(get_usuario_actual) a los
+4) en un cambio aparte y acotado.
+
+
+4) TEXTO LIMPIO DE LAS FASES 1–4
+====================================================================================
+
+FASE 0 — Limpieza previa
+-------------------------------------------------------------------------------
+- Eliminados api/generar_json.py y web-publico/productos.json: confirmado por
+  grep que nada los invocaba (ni cron, ni CI, ni el sitio — que hace fetch en
+  vivo a /publico/productos). Eran código muerto desde que el sitio pasó a
+  consumir la API directamente.
+- GET /api/productos, /categorias, /proveedores, /productos/{id} en main.py
+  NO se tocaron ni se eliminaron: confirmado que el panel admin los usa
+  activamente (Categorias.jsx, Proveedores.jsx, ProductoModal.jsx,
+  NotaFormulario.jsx) como fuente de listas para sus dropdowns.
+- El PDF suelto sin relación al proyecto (Ablehnungsbescheid_...pdf) ya no
+  existía en el momento de limpiar — no había nada que borrar.
+- CLAUDE.md y README.md actualizados: quitadas las referencias al flujo
+  viejo (DB → generar_json.py → productos.json → index.html), documentado
+  el flujo real (DB → API en vivo → fetch del sitio), y corregida la
+  descripción de admin/ (ya no es "futuro", es un panel React completo en
+  uso).
+
+FASE 1 — Migración 011 y schema.sql
+-------------------------------------------------------------------------------
+- Nuevo archivo db/migrations/011_sucursales.sql (contenido completo en la
+  sección 1 de este documento).
+- db/schema.sql actualizado como "foto completa" del esquema (snapshot),
+  siguiendo la misma disciplina que las migraciones 001-010: se insertó la
+  tabla sucursales y producto_sucursal en su lugar correcto en el orden de
+  dependencias (después de productos, antes de usuarios — ambas la
+  referencian), se agregó la columna sucursal_id a usuarios y notas con
+  comentarios explicando el patrón de "congelar al crear / no reescribir
+  historia", y se renumeraron las secciones del archivo (pagos pasó de "7"
+  a "9", movimientos_inventario de "8" a "10") para mantener la numeración
+  correlativa del archivo.
+- Seed de las dos sucursales incluido tanto en la migración como en
+  schema.sql (para que una base nueva creada desde cero con schema.sql
+  también arranque con los mismos datos).
+
+FASE 2 — Backend (FastAPI)
+-------------------------------------------------------------------------------
+- Nuevo router api/routers/sucursales.py: GET /sucursales (lista completa,
+  roles superadmin/admin/worker — lo necesita NotaFormulario para su select
+  editable) y PUT /sucursales/{id} (editar, roles superadmin/admin). Sin
+  POST/DELETE a propósito: las dos sucursales son entidades legales fijas
+  sembradas por la migración, no se crean ni se borran desde la app.
+  Registrado en api/main.py junto a los demás routers.
+- api/routers/publico.py: nuevo GET /publico/sucursales (filtra activo=true,
+  así CDMX no aparece hasta que la familia la active). ProductoPublico gana
+  dos campos calculados vía LEFT JOIN a producto_sucursal + sucursales
+  (matcheado por nombre = 'Ciudad de México', no por id, porque el id
+  numérico depende del orden de inserción y no debe asumirse fijo entre
+  entornos): disponible_cdmx (bool) y precio_cdmx (número o null si esa
+  sucursal tiene ocultar_precio_publico=true). El frontend nunca recibe el
+  flag ocultar_precio_publico crudo — solo el resultado ya calculado.
+- api/routers/catalogo.py: ProductoCreate/ProductoUpdate aceptan
+  disponible_cdmx y precio_cdmx (no son columnas de productos: viven en
+  producto_sucursal, vía dos helpers nuevos _sucursal_cdmx_id() y
+  _actualizar_disponibilidad_cdmx() que hacen upsert o delete según
+  corresponda). También se agregaron ambos campos a GET /admin/productos
+  (AdminProducto) — esto era necesario para que ProductoModal.jsx pueda
+  precargarlos al editar; si no, cada vez que alguien guardara un producto
+  existente se habría borrado silenciosamente su disponibilidad en CDMX.
+- api/routers/notas.py: NotaCreate/NotaUpdate ganan sucursal_id opcional.
+  En POST /notas, si no viene explícito, se resuelve automáticamente del
+  sucursal_id ACTUAL del vendedor elegido (una sola consulta extra) y se
+  congela en la fila — no es un JOIN en vivo como vendedor_id, es una copia
+  al momento de crear la nota. GET /notas gana el filtro ?sucursal_id=,
+  mismo patrón que el filtro existente de ?vendedor_id=. (Ver también la
+  sección 2 de este documento sobre el bug de índice que este cambio
+  destapó y ya se corrigió.)
+- api/routers/usuarios.py: UsuarioCreate/UsuarioUpdate/UsuarioOut ganan
+  sucursal_id. VendedorOut (el que alimenta el select de NotaFormulario)
+  gana sucursal_id y sucursal_nombre vía LEFT JOIN, para poder mostrar
+  "Juan Pérez — CDMX" en el dropdown.
+- api/routers/dashboard.py: tanto GET /dashboard/utilidad como GET
+  /dashboard/historico/utilidad ganan un tercer desglose "por_sucursal",
+  con el mismo patrón exacto que los desgloses existentes por categoría y
+  proveedor (incluyendo el mismo filtro de aislamiento por rol worker que ya
+  tenían esos dos). A diferencia del desglose "por vendedor" (que se oculta
+  para workers por privacidad entre compañeros), "por sucursal" SÍ se
+  muestra a todos los roles — no es una comparación entre personas.
+
+FASE 3 — Panel admin (React)
+-------------------------------------------------------------------------------
+- Nueva página admin/src/pages/Sucursales.jsx: lista + modal de edición
+  (nombre, razón social, dirección, link de Maps, WhatsApp, toggle "ocultar
+  precio público", toggle "activa en el sitio"). Sin crear/borrar, a
+  diferencia de Categorias.jsx/Proveedores.jsx que sí lo permiten, porque
+  las sucursales son fijas.
+- Ruta /sucursales registrada en App.jsx y link agregado al menú lateral en
+  Layout.jsx. Esto requirió extender el mecanismo de visibilidad por rol del
+  menú (antes solo soportaba "soloRol: un-solo-rol"; se agregó "soloRoles:
+  [lista]" porque Sucursales debía verla superadmin+admin+worker pero no
+  viewer, un caso que el mecanismo anterior no podía expresar).
+- Usuarios.jsx: el modal de crear/editar usuario gana un select de
+  sucursal (carga la lista desde GET /sucursales).
+- NotaFormulario.jsx: el select de vendedor ahora muestra la sucursal junto
+  al nombre ("Juan Pérez — CDMX"). Se agregó un segundo select editable de
+  Sucursal que se autocompleta con la sucursal actual del vendedor elegido
+  (handleVendedorChange), pero el usuario puede cambiarlo manualmente antes
+  de guardar si la venta fue en otra sucursal.
+- ProductoModal.jsx: nuevo toggle "También disponible en CDMX" (mismo
+  patrón visual que los toggles existentes de "Visible en el catálogo" y
+  "Destacado"), con un campo de precio condicional que solo aparece si el
+  toggle está activo.
+- Dashboard.jsx e Historico.jsx: nueva gráfica de barras "Utilidad por
+  sucursal", mismo componente GraficarBarras que ya usaban para categoría y
+  proveedor.
+- Notas.jsx: nuevo filtro de sucursal en la lista de notas, mismo patrón
+  que el filtro existente de vendedor (select + botón "Limpiar filtros").
+
+FASE 4 — Sitio público (web-publico/)
+-------------------------------------------------------------------------------
+- Refactor de WA_NUMBER: dejó de ser una constante hardcodeada duplicada en
+  9 lugares (5 en index.html, 2+1 en producto.html). Ahora cada página hace
+  fetch a /publico/sucursales al cargar (en paralelo con las llamadas que ya
+  existían a /publico/categorias y /publico/productos) y actualiza en JS los
+  href de la burbuja flotante, el botón del footer y el CTA de "Escríbenos
+  ahora" con el WhatsApp real de San Pedro Tultepec. Se conservó el número
+  viejo como valor de respaldo hardcodeado en el HTML por si la API falla
+  (así los botones nunca quedan rotos, solo desactualizados en el peor caso).
+- Sección de contacto de index.html: el bloque único de "Ubicación +
+  WhatsApp" (que además tenía la inconsistencia de decir "nuestros 2
+  sucursales" mostrando solo una dirección) se reemplazó por un contenedor
+  vacío (#sucursales-contacto) que JS llena con un bloque por cada sucursal
+  ACTIVA que devuelva la API — así, mientras CDMX siga con activo=false,
+  el sitio solo muestra San Pedro, sin secciones vacías ni datos a medias.
+- Catálogo y sección de destacados: nuevo badge "TAMBIÉN EN CDMX" en la
+  esquina superior derecha de las tarjetas de producto (la esquina opuesta
+  al badge de descuento existente, para que nunca se encimen), visible solo
+  si el producto trae disponible_cdmx=true.
+- producto.html: nuevo bloque bajo el precio de San Pedro. Si el producto
+  está disponible en CDMX, muestra el precio de esa sucursal si está
+  configurada para mostrarlo, o un link "consultar precio por WhatsApp" con
+  el número de CDMX y un mensaje pre-armado si esa sucursal decidió ocultar
+  el precio.
+
+
+VERIFICACIÓN REALIZADA (sin tocar ninguna base de datos)
+====================================================================================
+- python -m py_compile sobre los 7 archivos de backend modificados/nuevos:
+  sin errores de sintaxis.
+- npm run build del panel admin completo (React/Vite): compiló sin errores,
+  confirma que los 9 archivos .jsx modificados/nuevos son válidos.
+- Verificación de sintaxis de los <script> inline de index.html y
+  producto.html (parseados con new Function()): sin errores.
+- grep de "WA_NUMBER" y del número hardcodeado en web-publico/: confirmado
+  que solo quedan las referencias intencionales (valores de respaldo).
+
+PENDIENTE (requiere acceso a la base de datos real, que no tengo):
+  1. pg_dump antes de aplicar la migración 011 en cualquier entorno real.
+  2. Aplicar la migración y correr:
+       SELECT COUNT(*) FROM notas WHERE sucursal_id IS NULL;
+     para decidir si vale la pena reclasificar notas viejas a mano.
+  3. Completar los datos reales de CDMX desde el panel (Sucursales.jsx) y
+     activarla cuando estén listos.
+  4. Decidir si se quiere el refactor de dict_row descrito en la sección 2,
+     y si se quiere cerrar el hallazgo de la sección 3 (agregar
+     Depends(get_usuario_actual) a los 4 endpoints de main.py).

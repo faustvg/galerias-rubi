@@ -16,13 +16,14 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import api.database as database
 from api.auth import get_usuario_actual, pwd_context, UsuarioActual
-from api.routers.catalogo   import router as catalogo_router
-from api.routers.dashboard  import router as dashboard_router
-from api.routers.fotos      import router as fotos_router
-from api.routers.notas      import router as notas_router
-from api.routers.publico    import router as publico_router
-from api.routers.sucursales import router as sucursales_router
-from api.routers.usuarios   import router as usuarios_router
+from api.routers.catalogo    import router as catalogo_router
+from api.routers.dashboard   import router as dashboard_router
+from api.routers.fotos       import router as fotos_router
+from api.routers.notas       import router as notas_router
+from api.routers.publico     import router as publico_router
+from api.routers.sucursales  import router as sucursales_router
+from api.routers.testimonios import router as testimonios_router
+from api.routers.usuarios    import router as usuarios_router
 
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 if not SECRET_KEY:
@@ -96,6 +97,7 @@ api_router.include_router(fotos_router)
 api_router.include_router(notas_router)
 api_router.include_router(publico_router)
 api_router.include_router(sucursales_router)
+api_router.include_router(testimonios_router)
 api_router.include_router(usuarios_router)
 
 app.include_router(api_router)

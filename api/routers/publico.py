@@ -117,6 +117,15 @@ class SucursalPublica(BaseModel):
     es_principal: bool
 
 
+class TestimonioPublico(BaseModel):
+    """Vista pública de testimonio — sin activo/orden/creado_en, son
+    detalles de curación interna que el sitio no necesita."""
+    id:     int
+    texto:  str
+    autor:  str
+    ciudad: Optional[str]
+
+
 # ---------------------------------------------------------------------------
 # SQL base — reutilizado por lista y detalle
 # ---------------------------------------------------------------------------
@@ -293,5 +302,32 @@ async def sucursales_publicas(conn=Depends(get_db)):
             "id": r[0], "nombre": r[1], "direccion": r[2],
             "maps_url": r[3], "whatsapp": r[4], "es_principal": r[5],
         }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# GET /publico/testimonios
+# ---------------------------------------------------------------------------
+
+@router.get("/testimonios", response_model=list[TestimonioPublico])
+async def testimonios_publicos(conn=Depends(get_db)):
+    """
+    Testimonios activos para el carrusel del sitio, en el orden que
+    decidió la familia desde el panel. Filtra activo=true — mismo
+    criterio que destacados/visible_en_sitio en el resto del sitio.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT id, texto, autor, ciudad
+            FROM   testimonios
+            WHERE  activo = true
+            ORDER BY orden, id
+            """
+        )
+        rows = await cur.fetchall()
+    return [
+        {"id": r[0], "texto": r[1], "autor": r[2], "ciudad": r[3]}
         for r in rows
     ]

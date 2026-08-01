@@ -77,6 +77,11 @@
       height: 85px;
     }
 
+    /* Header sticky de 85px — sin esto, saltar a un #ancla (clic en nav,
+       link compartido, o el re-scroll de _reAplicarScrollHash) deja el
+       título de la sección tapado detrás del header. */
+    section[id] { scroll-margin-top: 85px; }
+
     .nav-left, .nav-right {
       display: flex;
       gap: 2.4rem;
@@ -701,6 +706,38 @@
     .panel-media img { transition: transform .6s ease; }
     .showcase-panel:hover .panel-media img { transform: scale(1.04); }
 
+    /* ── INSTAGRAM ── */
+    #instagram {
+      background: var(--white);
+      text-align: center;
+      padding: 6rem 5vw;
+    }
+    #instagram .section-sub {
+      max-width: 480px;
+      margin: 0 auto 2.5rem;
+      font-size: .9rem;
+      opacity: .75;
+    }
+    .instagram-embed-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      /* min-height reserva espacio para que la página no salte cuando se
+         pegue el snippet del widget (carga async, tiene su propio tamaño). */
+      min-height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .instagram-embed-placeholder {
+      font-family: var(--sans);
+      font-size: .8rem;
+      letter-spacing: .06em;
+      color: var(--accent2);
+      border: 1px dashed rgba(77,54,46,.25);
+      padding: 2.5rem 2rem;
+      width: 100%;
+    }
+
     /* ── TESTIMONIAL ── */
     #testimonios {
       background: var(--text);
@@ -727,6 +764,17 @@
       letter-spacing: .15em;
       text-transform: uppercase;
       color: var(--accent2);
+    }
+
+    /* Carrusel de testimonios — reutiliza el mismo scroll-snap horizontal
+       de .featured-grid (Destacados), solo que aquí cada slide ocupa el
+       100% (una cita a la vez, no varias tarjetas lado a lado). Con un
+       solo testimonio activo, initCarousel detecta que no hay overflow y
+       oculta las flechas solo — se ve igual que el bloque fijo de antes. */
+    #testimonios .featured-carousel { max-width: 780px; margin: 0 auto; }
+    .testimonio-slide {
+      flex: 0 0 100%;
+      scroll-snap-align: center;
     }
 
     /* ── CONTACTO ── */
@@ -775,6 +823,48 @@
     .info-item span {
       font-size: .9rem;
       line-height: 1.5;
+    }
+
+    /* ── Mini-mapas de los 2 locales de San Pedro ──
+       Estático a propósito (NO viene de /publico/sucursales): son dos
+       direcciones físicas del mismo negocio/sucursal San Pedro, no
+       sucursales distintas — mezclarlas en esa tabla rompería la
+       separación legal/fiscal que se construyó para CDMX. */
+    .contacto-mapas {
+      grid-column: 1 / -1;
+      margin-top: 3.5rem;
+      padding-top: 3rem;
+      border-top: 1px solid rgba(77,54,46,.12);
+    }
+    .contacto-mapas-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2.5rem;
+      margin-top: 1.8rem;
+    }
+    .mapa-local h4 {
+      font-family: var(--sans);
+      font-size: .78rem;
+      font-weight: 500;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: .4rem;
+    }
+    .mapa-local p {
+      font-size: .85rem;
+      color: var(--accent2);
+      line-height: 1.5;
+      margin-bottom: .9rem;
+    }
+    .mapa-local iframe {
+      width: 100%;
+      height: 220px;
+      border: 0;
+      display: block;
+    }
+    @media (max-width: 760px) {
+      .contacto-mapas-grid { grid-template-columns: 1fr; gap: 2rem; }
     }
 
     .form-group {
@@ -856,6 +946,64 @@
     }
     .footer-cta-btn:hover { background: #1ebe57; }
     .footer-cta-btn svg { flex-shrink: 0; }
+
+    /* ── Redes sociales ── */
+    .footer-social {
+      display: flex;
+      gap: .8rem;
+      margin-top: 1.3rem;
+    }
+    .footer-social a {
+      width: 34px; height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(250,248,245,.35);
+      border-radius: 50%;
+      color: var(--white);
+      transition: background .2s, border-color .2s;
+    }
+    .footer-social a:hover {
+      background: rgba(250,248,245,.15);
+      border-color: rgba(250,248,245,.6);
+    }
+
+    /* ── Métodos de pago — señal de confianza, no pasarela funcional.
+       Monocromo/outline sobre el verde del footer, texto en vez de logos a
+       color para no chocar con la paleta ni reproducir marcas registradas. ── */
+    .footer-pagos {
+      padding-top: 2.5rem;
+      margin-top: 2.5rem;
+      border-top: 1px solid rgba(250,248,245,.18);
+    }
+    .footer-pagos-label {
+      display: block;
+      font-size: .68rem;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      opacity: .55;
+      margin-bottom: 1rem;
+    }
+    .footer-pagos-iconos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .6rem;
+    }
+    .pago-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .45rem;
+      border: 1px solid rgba(250,248,245,.3);
+      color: var(--white);
+      opacity: .85;
+      font-family: var(--sans);
+      font-size: .64rem;
+      font-weight: 400;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: .4rem .7rem;
+    }
+    .pago-badge svg { flex-shrink: 0; }
 
     .footer-col h4 {
       font-size: .7rem;
@@ -1313,13 +1461,36 @@
   </div>
 </section>
 
-<!-- ══════════ TESTIMONIAL ══════════ -->
-<section id="testimonios">
+<!-- ══════════ INSTAGRAM ══════════ -->
+<section id="instagram">
+  <div class="instagram-header">
+    <p class="section-label">Síguenos</p>
+    <h2 class="section-title">En Instagram</h2>
+    <p class="section-sub">@mueblesrubimx — inspiración, muebles terminados y el proceso detrás de cada pieza.</p>
+  </div>
+  <div class="instagram-embed-wrap">
+    <!-- PEGAR AQUÍ el código del widget de Instagram (ej. SnapWidget, cuenta
+         pública @mueblesrubimx, sin conectar contraseña de Instagram).
+         Reemplaza TODO el párrafo de placeholder de abajo por el snippet
+         de embed que genere snapwidget.com. -->
+    <p class="instagram-embed-placeholder">Próximamente: nuestras fotos de Instagram</p>
+  </div>
+</section>
+
+<!-- ══════════ TESTIMONIOS ══════════
+     Oculta por defecto (display:none) hasta que el JS confirme que hay al
+     menos un testimonio activo=true en /publico/testimonios — mismo
+     criterio que Destacados, nunca una sección vacía. -->
+<section id="testimonios" style="display:none;">
   <p class="section-label">Lo que dicen nuestros clientes</p>
-  <blockquote class="testimonial-quote">
-    "El comedor que nos hicieron es la pieza central de nuestra casa. La calidad de la parota es increíble — y lo entregaron antes de lo prometido."
-  </blockquote>
-  <p class="testimonial-author">— Familia Hernández, Ciudad de México</p>
+
+  <div class="featured-carousel" id="testimonios-carousel">
+    <button type="button" class="featured-nav featured-prev" id="testimonios-prev" aria-label="Testimonio anterior">‹</button>
+    <div class="featured-grid" id="testimonios-grid" tabindex="0" aria-label="Carrusel de testimonios">
+      <!-- Slides inyectados por JS desde /publico/testimonios -->
+    </div>
+    <button type="button" class="featured-nav featured-next" id="testimonios-next" aria-label="Siguiente testimonio">›</button>
+  </div>
 </section>
 
 <!-- ══════════ CONTACTO ══════════ -->
@@ -1386,6 +1557,35 @@
       <button type="submit" class="btn" style="width:100%;justify-content:center;text-align:center;">Enviar consulta</button>
     </form>
   </div>
+
+  <!-- Los 2 locales físicos de San Pedro — estático, ver comentario en el CSS
+       (.contacto-mapas) sobre por qué NO viene de /publico/sucursales. -->
+  <div class="contacto-mapas">
+    <p class="section-label">Nuestros locales en San Pedro</p>
+    <h3 class="section-title" style="font-size:1.6rem;">Visítanos en persona</h3>
+    <div class="contacto-mapas-grid">
+      <div class="mapa-local">
+        <h4>Local — Benito Juárez 73</h4>
+        <p>C. Benito Juárez 73, 52030 San Pedro Tultepec, Lerma, Estado de México</p>
+        <iframe
+          src="https://maps.google.com/maps?q=C.+Benito+Ju%C3%A1rez+73%2C+52030+San+Pedro+Tultepec%2C+Lerma%2C+Estado+de+M%C3%A9xico&output=embed"
+          loading="lazy"
+          title="Mapa — Local Benito Juárez 73, San Pedro Tultepec"
+          aria-label="Mapa del local en Benito Juárez 73"
+        ></iframe>
+      </div>
+      <div class="mapa-local">
+        <h4>Local — Benito Juárez Manzana 033</h4>
+        <p>C. Benito Juárez Manzana 033, 52030 San Pedro Tultepec, Lerma, Estado de México</p>
+        <iframe
+          src="https://maps.google.com/maps?q=C.+Benito+Ju%C3%A1rez+Manzana+033%2C+52030+San+Pedro+Tultepec%2C+Lerma%2C+Estado+de+M%C3%A9xico&output=embed"
+          loading="lazy"
+          title="Mapa — Local Benito Juárez Manzana 033, San Pedro Tultepec"
+          aria-label="Mapa del local en Benito Juárez Manzana 033"
+        ></iframe>
+      </div>
+    </div>
+  </div>
 </section>
 
 <!-- ══════════ FOOTER ══════════ -->
@@ -1393,11 +1593,20 @@
   <div class="footer-top">
     <div class="footer-brand">
       <div class="logo-text">Muebles Rubí</div>
-      <p>Artesanos de la madera desde hace más de 30 años. Piezas únicas de pino y parota, hechas a mano en San Pedro Tultepec, Lerma.</p>
+      <p>Artesanos de la madera desde hace más de 30 años. Piezas únicas de pino y chapa de parota, hechas a mano en San Pedro Tultepec, Lerma.</p>
       <a id="footer-escribenos-btn" href="https://wa.me/5217225723939" class="footer-cta-btn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
         ¿Tienes una idea? Hablemos
       </a>
+
+      <div class="footer-social">
+        <a href="https://www.facebook.com/mueblesrubimx" target="_blank" rel="noopener" aria-label="Muebles Rubí en Facebook">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-8.06h2.7l.4-3.13h-3.1V7.83c0-.9.25-1.52 1.55-1.52h1.66V3.5c-.29-.04-1.27-.12-2.41-.12-2.38 0-4.02 1.45-4.02 4.12v2.3H7.56v3.13h2.72V21h3.22z"/></svg>
+        </a>
+        <a href="https://www.instagram.com/mueblesrubimx/" target="_blank" rel="noopener" aria-label="Muebles Rubí en Instagram">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1"/></svg>
+        </a>
+      </div>
     </div>
 
     <div class="footer-col">
@@ -1407,6 +1616,7 @@
         <li><a href="#destacados">Destacados</a></li>
         <li><a href="#coleccion">Colección</a></li>
         <li><a href="#amedida">A Medida</a></li>
+        <li><a href="#instagram">Instagram</a></li>
         <li><a href="#contacto">Contacto</a></li>
       </ul>
     </div>
@@ -1421,6 +1631,32 @@
         <li><a href="#coleccion">Sofá Camas</a></li>
         <li><a href="#coleccion">Muebles Pantalla</a></li>
       </ul>
+    </div>
+  </div>
+
+  <div class="footer-pagos">
+    <span class="footer-pagos-label">Métodos de pago</span>
+    <div class="footer-pagos-iconos">
+      <span class="pago-badge">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Visa
+      </span>
+      <span class="pago-badge">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Mastercard
+      </span>
+      <span class="pago-badge">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Amex
+      </span>
+      <span class="pago-badge">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="1.5"/><circle cx="12" cy="12" r="2.5"/></svg>
+        Efectivo
+      </span>
+      <span class="pago-badge">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>
+        Transferencia
+      </span>
     </div>
   </div>
 
@@ -1683,19 +1919,21 @@
     initFeaturedCarousel()
   }
 
-  /* ── flechas del carrusel de destacados ──
-     Scroll nativo con snap; las flechas solo avanzan/retroceden una
-     tarjeta. Se desactivan (atenuadas) en cada extremo y desaparecen por
-     completo si todo cabe sin scroll. */
-  function initFeaturedCarousel() {
-    const wrap = document.getElementById('featured-carousel')
-    const grid = document.getElementById('featured-grid')
-    const prev = document.getElementById('featured-prev')
-    const next = document.getElementById('featured-next')
+  /* ── flechas de carrusel horizontal con scroll-snap ──
+     Genérico: lo usan tanto Destacados (productos) como Testimonios
+     (texto) — mismo comportamiento, distintos ids. Scroll nativo con
+     snap; las flechas solo avanzan/retroceden una tarjeta/slide. Se
+     desactivan (atenuadas) en cada extremo y desaparecen por completo si
+     todo cabe sin scroll. */
+  function initCarousel({ wrapId, gridId, prevId, nextId }) {
+    const wrap = document.getElementById(wrapId)
+    const grid = document.getElementById(gridId)
+    const prev = document.getElementById(prevId)
+    const next = document.getElementById(nextId)
     if (!wrap) return
 
     function _paso() {
-      const card = grid.querySelector('.featured-card')
+      const card = grid.firstElementChild
       if (!card) return grid.clientWidth
       const gap = parseFloat(getComputedStyle(grid).columnGap) || 0
       return card.getBoundingClientRect().width + gap
@@ -1723,6 +1961,20 @@
       window.addEventListener('resize', _actualizarFlechas)
     }
     _actualizarFlechas()
+  }
+
+  function initFeaturedCarousel() {
+    initCarousel({
+      wrapId: 'featured-carousel', gridId: 'featured-grid',
+      prevId: 'featured-prev',     nextId: 'featured-next',
+    })
+  }
+
+  function initTestimoniosCarousel() {
+    initCarousel({
+      wrapId: 'testimonios-carousel', gridId: 'testimonios-grid',
+      prevId: 'testimonios-prev',     nextId: 'testimonios-next',
+    })
   }
 
   // Al cargar la página, si la URL trae ?categoria=ID (ej. al volver desde
@@ -1780,7 +2032,30 @@
       if (resSuc.ok) aplicarSucursales(await resSuc.json())
     } catch {
       grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--accent1);padding:3rem 0;font-size:.85rem;">No se pudo cargar el catálogo. Por favor intenta más tarde.</p>'
+    } finally {
+      // #destacados arranca oculto (display:none) y renderDestacados() recién
+      // aquí decide si mostrarlo — si el navegador ya hizo su scroll nativo al
+      // #hash ANTES de esto (que es lo normal: el load event no espera fetch),
+      // esa posición quedó calculada con Destacados en 0px de alto. En cuanto
+      // se revela, todo lo de abajo se recorre y el scroll queda "corto".
+      // Fix genérico: vuelve a hacer scroll al hash ACTUAL una vez que todo
+      // terminó de renderizar, sin importar qué sección sea ni cómo se llegó
+      // aquí (breadcrumb, link externo, entrada directa con #ancla).
+      _reAplicarScrollHash()
     }
+  }
+
+  function _reAplicarScrollHash() {
+    if (!location.hash) return
+    // Doble rAF: espera a que el navegador termine de pintar el layout ya
+    // revelado (un solo rAF a veces corre antes del reflow de la sección
+    // que se acaba de mostrar) antes de calcular la posición del scroll.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.querySelector(location.hash)
+        if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' })
+      })
+    })
   }
 
   function _escHtml(s) {
@@ -1870,7 +2145,7 @@
 
     document.querySelectorAll(
       '.destacados-header, .about-img, .about-text, .coleccion-header, ' +
-      '.amedida-intro, .showcase-text, .contacto-info, .contacto-form'
+      '.amedida-intro, .showcase-text, .instagram-header, .contacto-info, .contacto-form'
     ).forEach(el => el.classList.add('reveal'))
 
     // grupos escalonados: cada miembro entra 90ms después del anterior

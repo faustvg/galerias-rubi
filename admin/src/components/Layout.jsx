@@ -68,6 +68,7 @@ const NAV = [
   { to: '/categorias',  label: 'Categorías'                              },
   { to: '/proveedores', label: 'Proveedores'                             },
   { to: '/sucursales',  label: 'Sucursales',     soloRoles: ['superadmin', 'admin', 'worker'] },
+  { to: '/testimonios', label: 'Testimonios',    soloRoles: ['superadmin', 'admin'] },
   { to: '/usuarios',    label: 'Usuarios',       soloRol: 'superadmin'   },
 ]
 

@@ -11,12 +11,13 @@
 --  Orden de creación = orden de dependencias:
 --    1. categorias  2. proveedores  3. productos   4. sucursales
 --    5. producto_sucursal  6. usuarios  7. notas  8. partidas
---    9. pagos  10. bodegas  11. movimientos_inventario
+--    9. pagos  10. bodegas  11. movimientos_inventario  12. testimonios
 --  Las tablas "padre" se crean antes que las que las referencian.
 --  (usuarios va ANTES de notas porque notas referencia a usuarios.
 --  sucursales va ANTES de usuarios y notas porque ambas la referencian.
 --  bodegas va ANTES de movimientos_inventario porque esta última la
---  referencia vía bodega_id.)
+--  referencia vía bodega_id. testimonios no tiene FKs — va al final por
+--  ser la tabla más nueva, sin que su posición importe realmente.)
 --
 --  Para cargar este archivo en psql (base de datos VACÍA):
 --    \i 'D:/Faus_/galerias_rubi/db/schema.sql'
@@ -500,6 +501,27 @@ CREATE TRIGGER trg_recalcular_existencias
 
 
 -- ------------------------------------------------------------
+-- 12. TESTIMONIOS  (migración 013 — curación manual desde el panel)
+--    Mismo patrón que productos.destacados: la familia decide qué se
+--    muestra en el sitio público sin tocar código.
+--    activo: permite cargar un testimonio sin publicarlo todavía.
+--    orden: entero simple, controla el orden del carrusel público
+--      (ascendente); sin restricción de unicidad.
+--    Sin FKs: es contenido de marketing curado a mano, no un registro
+--    transaccional ligado a una venta real.
+-- ------------------------------------------------------------
+CREATE TABLE testimonios (
+    id        SERIAL PRIMARY KEY,
+    texto     TEXT NOT NULL,
+    autor     VARCHAR(150) NOT NULL,
+    ciudad    VARCHAR(100),
+    activo    BOOLEAN NOT NULL DEFAULT true,
+    orden     INTEGER NOT NULL DEFAULT 0,
+    creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+
+-- ------------------------------------------------------------
 -- SECUENCIA para folios digitales (notas creadas en el sistema)
 -- ------------------------------------------------------------
 CREATE SEQUENCE IF NOT EXISTS notas_digital_seq START 1;
@@ -532,3 +554,13 @@ UNION ALL
 SELECT 'Local Amarillo', id, true FROM sucursales WHERE nombre = 'San Pedro Tultepec'
 UNION ALL
 SELECT 'Almacen', id, true FROM sucursales WHERE nombre = 'San Pedro Tultepec';
+
+
+-- ------------------------------------------------------------
+-- SEED de testimonios (migración 013)
+-- Migra el único testimonio que ya existía hardcodeado en el sitio, para
+-- que no desaparezca nada al lanzar la curación desde el panel.
+-- ------------------------------------------------------------
+INSERT INTO testimonios (texto, autor, ciudad, activo, orden) VALUES
+  ('El comedor que nos hicieron es la pieza central de nuestra casa. La calidad de la parota es increíble — y lo entregaron antes de lo prometido.',
+   'Familia Hernández', 'Ciudad de México', true, 0);
