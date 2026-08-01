@@ -11,10 +11,12 @@
 --  Orden de creación = orden de dependencias:
 --    1. categorias  2. proveedores  3. productos   4. sucursales
 --    5. producto_sucursal  6. usuarios  7. notas  8. partidas
---    9. pagos  10. movimientos_inventario
+--    9. pagos  10. bodegas  11. movimientos_inventario
 --  Las tablas "padre" se crean antes que las que las referencian.
 --  (usuarios va ANTES de notas porque notas referencia a usuarios.
---  sucursales va ANTES de usuarios y notas porque ambas la referencian.)
+--  sucursales va ANTES de usuarios y notas porque ambas la referencian.
+--  bodegas va ANTES de movimientos_inventario porque esta última la
+--  referencia vía bodega_id.)
 --
 --  Para cargar este archivo en psql (base de datos VACÍA):
 --    \i 'D:/Faus_/galerias_rubi/db/schema.sql'
@@ -356,7 +358,35 @@ GROUP BY folio_pedido;
 
 
 -- ------------------------------------------------------------
--- 10. MOVIMIENTOS_INVENTARIO  (migración 008, extendida en 010 —
+-- 10. BODEGAS  (migración 012 — catálogo de bodegas, enlazadas a sucursal)
+--    Formaliza lo que antes era solo texto libre en
+--    movimientos_inventario.ubicacion. Cada bodega pertenece a una
+--    sucursal (bodegas.sucursal_id); una sucursal puede tener varias
+--    bodegas (San Pedro tiene 3: Local Jose, Local Amarillo, Almacen;
+--    CDMX tiene 1: Local Mexico).
+--
+--    OJO: bodega (logística interna — dónde está FÍSICAMENTE un mueble)
+--    y sucursal (entidad legal de venta) siguen siendo conceptos
+--    DISTINTOS, igual que ya se explicó para productos.ubicaciones. No
+--    se fusionan: se conectan por FK, nada más.
+--
+--    nombre es UNIQUE porque movimientos_inventario.ubicacion (texto
+--    libre) se sigue usando para el backfill/matching por nombre exacto
+--    — dos bodegas con el mismo nombre harían ese match ambiguo.
+--    sucursal_id ON DELETE SET NULL: si se borrara una sucursal, sus
+--    bodegas se conservan (historial de movimientos), solo pierden el
+--    enlace.
+-- ------------------------------------------------------------
+CREATE TABLE bodegas (
+    id          SERIAL PRIMARY KEY,
+    nombre      VARCHAR(100) NOT NULL UNIQUE,
+    sucursal_id INTEGER REFERENCES sucursales(id) ON DELETE SET NULL,
+    activo      BOOLEAN NOT NULL DEFAULT true
+);
+
+
+-- ------------------------------------------------------------
+-- 11. MOVIMIENTOS_INVENTARIO  (migración 008, extendida en 010 y 012 —
 --    historial de entradas de inventario, editable)
 --    A diferencia de productos.fecha_ingreso (solo la PRIMERA vez que
 --    el modelo entra al catálogo), esta tabla registra CADA llegada
@@ -369,7 +399,16 @@ GROUP BY folio_pedido;
 --    usuario_id -> usuarios(id) ON DELETE SET NULL: quién lo registró,
 --      opcional, se conserva si se borra el usuario.
 --    ubicacion es VARCHAR libre, no FK: coincide con el estilo de
---      productos.ubicaciones (TEXT[] de texto libre).
+--      productos.ubicaciones (TEXT[] de texto libre). SIGUE siendo la
+--      fuente de verdad de trg_recalcular_existencias (ver abajo) — NO
+--      se tocó al agregar bodega_id.
+--    bodega_id (migración 012) = enlace ADITIVO en paralelo a
+--      'ubicacion', no un reemplazo: alimenta el rollup de existencias
+--      por sucursal (GET /bodegas/existencias) sin arriesgar el trigger
+--      existente, que sigue leyendo únicamente 'ubicacion'. Nullable:
+--      movimientos históricos cuyo texto de ubicacion no matcheó
+--      ninguna bodega en el backfill de la migración 012 se quedan sin
+--      enlazar — no se les inventa una bodega.
 --    proveedor_id (migración 010) = de qué proveedor vino ESTE lote —
 --      puede ser distinto del proveedor por defecto del producto
 --      (productos.proveedor_id), porque un mismo modelo a veces se
@@ -395,7 +434,8 @@ CREATE TABLE movimientos_inventario (
     creado_en      TIMESTAMP NOT NULL DEFAULT NOW(),
     proveedor_id   INTEGER REFERENCES proveedores(id),
     costo_unitario NUMERIC(10,2),
-    costo_total    NUMERIC(10,2) GENERATED ALWAYS AS (cantidad * costo_unitario) STORED
+    costo_total    NUMERIC(10,2) GENERATED ALWAYS AS (cantidad * costo_unitario) STORED,
+    bodega_id      INTEGER REFERENCES bodegas(id)
 );
 
 CREATE INDEX idx_movimientos_producto_id ON movimientos_inventario (producto_id);
@@ -477,3 +517,18 @@ INSERT INTO sucursales (nombre, razon_social, direccion, maps_url, whatsapp, ocu
    NULL, '5217225723939', false, true, true),
   ('Ciudad de México', 'Muebles Local No.17',
    'PENDIENTE — completar desde el panel', NULL, NULL, true, false, false);
+
+
+-- ------------------------------------------------------------
+-- SEED de bodegas (migración 012)
+-- Local Mexico -> CDMX. Local Jose / Local Amarillo / Almacen -> San Pedro.
+-- Mapeo confirmado con la familia — ver comentario en la sección 10.
+-- ------------------------------------------------------------
+INSERT INTO bodegas (nombre, sucursal_id, activo)
+SELECT 'Local Mexico', id, true FROM sucursales WHERE nombre = 'Ciudad de México'
+UNION ALL
+SELECT 'Local Jose', id, true FROM sucursales WHERE nombre = 'San Pedro Tultepec'
+UNION ALL
+SELECT 'Local Amarillo', id, true FROM sucursales WHERE nombre = 'San Pedro Tultepec'
+UNION ALL
+SELECT 'Almacen', id, true FROM sucursales WHERE nombre = 'San Pedro Tultepec';

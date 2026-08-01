@@ -303,13 +303,40 @@
       text-decoration: line-through;
       text-decoration-thickness: 1px;
     }
-    /* disponibilidad en CDMX — línea discreta bajo el precio de San Pedro */
-    .prod-cdmx-info {
-      font-size: .85rem;
-      color: var(--accent1);
-      margin: -1rem 0 1.2rem;
+    /* ── Precio por sucursal (migración 011/012) ──
+       Cada sucursal donde se vende el producto tiene su propio bloque, con
+       la MISMA jerarquía visual — el objetivo es que sea imposible
+       malinterpretar que el precio cambia según dónde se compre. */
+    .precio-bloque { margin: 1.2rem 0; }
+    .precio-bloque-label {
+      font-family: var(--sans);
+      font-size: .72rem;
+      font-weight: 500;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: .35rem;
     }
-    .prod-cdmx-info a { color: var(--btn); font-weight: 600; }
+    .precio-bloque-cdmx {
+      padding-top: 1.1rem;
+      margin-top: .2rem;
+      border-top: 1px solid rgba(77,54,46,.12);
+    }
+    /* CTA cuando esa sucursal oculta el precio — mismo peso que un precio
+       real, no una nota al pie: ícono de ubicación (mismo pin de Contacto
+       en index.html) + color de acento de marca, nunca gris apagado. */
+    .precio-cdmx-cta {
+      display: flex;
+      align-items: flex-start;
+      gap: .7rem;
+      color: var(--btn);
+      font-family: var(--serif);
+      font-size: 1.15rem;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+    .precio-cdmx-cta svg { flex-shrink: 0; margin-top: .3rem; }
+    .precio-cdmx-cta a { color: var(--btn); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 
     /* chip de % junto al precio — mismo lenguaje que la etiqueta de las
        tarjetas del catálogo */
@@ -506,11 +533,26 @@
         <h1 class="section-title" id="prod-nombre"></h1>
         <div class="divider"></div>
 
-        <p class="prod-precio" id="prod-precio" style="display:none"></p>
+        <!-- Precio por sucursal (migración 011/012). Si el producto NO está
+             disponible en CDMX, prod-precio-label queda oculto y esto se ve
+             exactamente como antes (solo el precio, sin etiqueta). Si SÍ lo
+             está, ambos bloques se muestran con la misma jerarquía visual —
+             ver renderProducto() para la lógica completa. -->
+        <div class="precio-bloque" id="precio-bloque-sanpedro" style="display:none">
+          <p class="precio-bloque-label" id="prod-precio-label" style="display:none"></p>
+          <p class="prod-precio" id="prod-precio"></p>
+        </div>
 
-        <!-- Disponibilidad en CDMX (migración 011). Si esa sucursal oculta
-             precio, muestra un CTA de WhatsApp propio en vez de un número. -->
-        <p class="prod-cdmx-info" id="prod-cdmx-info" style="display:none"></p>
+        <div class="precio-bloque precio-bloque-cdmx" id="precio-bloque-cdmx" style="display:none">
+          <p class="precio-bloque-label" id="precio-cdmx-label">Ciudad de México</p>
+          <!-- CDMX muestra precio (ocultar_precio_publico=false) -->
+          <p class="prod-precio" id="prod-precio-cdmx" style="display:none"></p>
+          <!-- CDMX oculta precio (default) — CTA con ícono de ubicación -->
+          <div class="precio-cdmx-cta" id="precio-cdmx-cta" style="display:none">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            <p>También disponible en CDMX. El precio varía por sucursal — <a id="precio-cdmx-cta-link" href="#" target="_blank" rel="noopener">consúltanos por WhatsApp</a>.</p>
+          </div>
+        </div>
 
         <div class="prod-detalles" id="prod-detalles" style="display:none"></div>
 
@@ -598,6 +640,11 @@
   // Respaldo si /publico/sucursales no carga — igual que en index.html.
   let waPrincipal = '5217225723939'
   let waCdmx = null
+  // Nombres para las etiquetas del bloque de precio por sucursal — con
+  // fallback igual que waPrincipal, para que el layout no dependa de que
+  // /publico/sucursales haya cargado a tiempo.
+  let nombrePrincipal = 'San Pedro Tultepec'
+  let nombreCdmx = 'Ciudad de México'
 
   function fotoUrl(ruta) {
     if (!ruta) return null
@@ -739,7 +786,7 @@
           `<span>${formatPrecio(p.precio_efectivo)}</span>` +
           `<span class="chip-descuento">−${Math.round(p.descuento_pct)}%</span>`
         : formatPrecio(p.precio_efectivo)
-      el.style.display = ''
+      document.getElementById('precio-bloque-sanpedro').style.display = ''
     }
 
     // Detalles (material, color)
@@ -767,25 +814,51 @@
     )
     document.getElementById('btn-wa').href = `https://wa.me/${waPrincipal}?text=${msg}`
 
-    // Disponibilidad en CDMX (migración 011): intencionalmente específico a
-    // "CDMX" — con solo 2 sucursales no vale la pena una lista genérica
-    // (mismo criterio que ProductoPublico en el backend). Si precio_cdmx es
-    // null, esa sucursal oculta el precio: se muestra un CTA de WhatsApp
-    // propio en vez de un número.
-    const cdmxInfo = document.getElementById('prod-cdmx-info')
+    // Precio por sucursal (migración 011/012): si el producto NO está
+    // disponible en CDMX, precio-bloque-cdmx se queda oculto y la página se
+    // ve exactamente como antes (solo el precio de San Pedro, sin etiqueta
+    // de sucursal). Si SÍ está disponible, ambos bloques quedan con la
+    // MISMA jerarquía visual — objetivo explícito: que sea imposible
+    // malinterpretar que el precio cambia según la sucursal.
+    //
+    // Intencionalmente específico a "CDMX" — con solo 2 sucursales no vale
+    // la pena una lista genérica (mismo criterio que ProductoPublico en el
+    // backend). Si se agrega una tercera sucursal, este bloque necesita
+    // refactorizarse.
     if (p.disponible_cdmx) {
+      document.getElementById('prod-precio-label').textContent = nombrePrincipal
+      document.getElementById('prod-precio-label').style.display = ''
+      document.getElementById('precio-cdmx-label').textContent = nombreCdmx
+      document.getElementById('precio-bloque-cdmx').style.display = ''
+
+      const precioCdmxEl = document.getElementById('prod-precio-cdmx')
+      const ctaCdmxEl     = document.getElementById('precio-cdmx-cta')
+
       if (p.precio_cdmx != null) {
-        cdmxInfo.textContent = `También disponible en CDMX: ${formatPrecio(p.precio_cdmx)}`
-      } else if (waCdmx) {
-        const msgCdmx = encodeURIComponent(
-          `Hola, me interesa el mueble: *${p.nombre}* en la sucursal CDMX. ¿Cuál es el precio?`
-        )
-        cdmxInfo.innerHTML =
-          `También disponible en CDMX — <a href="https://wa.me/${waCdmx}?text=${msgCdmx}" target="_blank" rel="noopener">consultar precio por WhatsApp</a>`
+        // ocultar_precio_publico=false para CDMX: mismo tratamiento que el
+        // precio de San Pedro, igual de prominente.
+        precioCdmxEl.textContent = formatPrecio(p.precio_cdmx)
+        precioCdmxEl.style.display = ''
+        ctaCdmxEl.style.display = 'none'
       } else {
-        cdmxInfo.textContent = 'También disponible en CDMX — consulta precio'
+        // ocultar_precio_publico=true para CDMX (default): CTA con ícono +
+        // color de acento, apuntando al WhatsApp de CDMX.
+        const linkEl = document.getElementById('precio-cdmx-cta-link')
+        if (waCdmx) {
+          const msgCdmx = encodeURIComponent(
+            `Hola, me interesa el mueble: *${p.nombre}* en la sucursal ${nombreCdmx}. ¿Cuál es el precio?`
+          )
+          linkEl.href = `https://wa.me/${waCdmx}?text=${msgCdmx}`
+          linkEl.textContent = 'consúltanos por WhatsApp'
+        } else {
+          // Sin número de CDMX disponible (p.ej. /publico/sucursales falló):
+          // nunca generar wa.me/null — se deja como texto plano, sin link.
+          linkEl.removeAttribute('href')
+          linkEl.textContent = 'consulta con nosotros'
+        }
+        precioCdmxEl.style.display = 'none'
+        ctaCdmxEl.style.display = ''
       }
-      cdmxInfo.style.display = ''
     }
 
     // Galería
@@ -843,10 +916,12 @@
       if (bubble)    bubble.href = wa
       if (footerBtn) footerBtn.href = wa
     }
+    if (principal?.nombre) nombrePrincipal = principal.nombre
     // "La otra sucursal" (hoy CDMX) = la que NO es principal. Asume
     // exactamente 2 sucursales, igual que el resto del backend.
     const cdmx = sucursales.find(s => !s.es_principal)
     if (cdmx?.whatsapp) waCdmx = cdmx.whatsapp
+    if (cdmx?.nombre) nombreCdmx = cdmx.nombre
   }
 
   async function cargar() {

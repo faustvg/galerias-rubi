@@ -1464,8 +1464,12 @@
   }
 
   function badgeCdmx(p) {
+    // "SUCURSAL CDMX" en vez de "TAMBIÉN EN CDMX": con el espacio limitado
+    // de una card no cabe explicar que el precio varía, pero al menos debe
+    // quedar inequívoco que es OTRA SUCURSAL (ubicación de venta distinta),
+    // no otra opción/variante del mismo mueble.
     return p.disponible_cdmx
-      ? `<span class="badge-cdmx">TAMBIÉN EN CDMX</span>`
+      ? `<span class="badge-cdmx">SUCURSAL CDMX</span>`
       : ''
   }
 

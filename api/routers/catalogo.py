@@ -95,6 +95,37 @@ class ProductoUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Schemas — Bodegas (migración 012)
+# ---------------------------------------------------------------------------
+# Sin Create/Update: las bodegas se siembran por migración (mismo criterio
+# que sucursales.es_principal) — no hay CRUD de bodegas todavía.
+
+class BodegaOut(BaseModel):
+    id: int
+    nombre: str
+    sucursal_id: Optional[int] = None
+    sucursal_nombre: Optional[str] = None   # join de sucursales
+    activo: bool
+
+
+class BodegaExistencias(BaseModel):
+    """
+    total_existencias replica la MISMA fórmula que trg_recalcular_existencias
+    (SUM(cantidad) de movimientos_inventario) — no es una fórmula nueva, es
+    la misma que ya usa el trigger, aplicada por bodega en vez de por
+    producto. Como esa fórmula no descuenta ventas (las ventas ajustan
+    productos.existencias directo, sin pasar por movimientos_inventario),
+    este total tampoco lo hace — es consistente con cómo ya funciona el
+    resto del sistema, no una limitación nueva de este endpoint.
+    """
+    id: int
+    nombre: str
+    sucursal_id: Optional[int] = None
+    sucursal_nombre: Optional[str] = None
+    total_existencias: int
+
+
+# ---------------------------------------------------------------------------
 # Schemas — Movimientos de inventario (restock)
 # ---------------------------------------------------------------------------
 
@@ -102,6 +133,7 @@ class MovimientoInventarioCreate(BaseModel):
     cantidad: Annotated[int, Field(gt=0)]
     fecha: Optional[date] = None       # si no se manda, el endpoint usa hoy
     ubicacion: Optional[str] = None
+    bodega_id: Optional[int] = None   # migración 012 — ver registrar_movimiento_inventario()
     proveedor_id: Optional[int] = None       # de qué proveedor vino ESTE lote (migración 010)
     costo_unitario: Optional[Annotated[float, Field(ge=0)]] = None   # opcional — no siempre hay factura a mano
 
@@ -114,6 +146,7 @@ class MovimientoInventarioUpdate(BaseModel):
     cantidad: Optional[Annotated[int, Field(gt=0)]] = None
     fecha: Optional[date] = None
     ubicacion: Optional[str] = None
+    bodega_id: Optional[int] = None
     proveedor_id: Optional[int] = None
     costo_unitario: Optional[Annotated[float, Field(ge=0)]] = None
 
@@ -128,6 +161,7 @@ class MovimientoInventarioOut(BaseModel):
     cantidad: int
     fecha: date
     ubicacion: Optional[str] = None
+    bodega_id: Optional[int] = None
     proveedor_id: Optional[int] = None
     costo_unitario: Optional[float] = None
     costo_total: Optional[float] = None
@@ -143,6 +177,8 @@ class MovimientoInventarioItem(BaseModel):
     cantidad: int
     fecha: date
     ubicacion: Optional[str] = None
+    bodega_id: Optional[int] = None
+    nombre_bodega: Optional[str] = None   # join de bodegas
     usuario_id: Optional[int] = None
     nombre_usuario: Optional[str] = None   # join de usuarios — quién lo registró
     proveedor_id: Optional[int] = None
@@ -238,6 +274,21 @@ async def _actualizar_disponibilidad_cdmx(cur, producto_id: int, disponible: boo
             "DELETE FROM producto_sucursal WHERE producto_id = %s AND sucursal_id = %s",
             (producto_id, sucursal_id),
         )
+
+
+async def _resolver_bodega_ubicacion(cur, bodega_id: int) -> str:
+    """
+    Resuelve el nombre de una bodega (migración 012) para escribirlo
+    TAMBIÉN en movimientos_inventario.ubicacion (texto) — bodega_id es un
+    enlace aditivo, ubicacion sigue siendo lo único que lee
+    trg_recalcular_existencias, así que nunca puede quedar desincronizada
+    de lo que dice bodega_id.
+    """
+    await cur.execute("SELECT nombre FROM bodegas WHERE id = %s", (bodega_id,))
+    row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=422, detail="bodega_id no existe")
+    return row[0]
 
 
 # ---------------------------------------------------------------------------
@@ -509,6 +560,72 @@ async def descontinuar_producto(
 
 
 # ---------------------------------------------------------------------------
+# Endpoints — Bodegas (migración 012)
+# ---------------------------------------------------------------------------
+# Mismos roles que ya pueden editar stock: el dropdown de HistorialStock.jsx
+# los necesita para capturar movimientos.
+
+@router.get("/bodegas", response_model=list[BodegaOut])
+async def listar_bodegas(
+    _usuario: UsuarioActual = requiere_roles(*ROLES_ESCRITURA),
+    conn=Depends(get_db),
+):
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT b.id, b.nombre, b.sucursal_id, s.nombre AS sucursal_nombre, b.activo
+            FROM   bodegas b
+            LEFT   JOIN sucursales s ON s.id = b.sucursal_id
+            ORDER BY s.nombre NULLS LAST, b.nombre
+            """
+        )
+        rows = await cur.fetchall()
+    return [
+        {
+            "id": r[0], "nombre": r[1], "sucursal_id": r[2],
+            "sucursal_nombre": r[3], "activo": r[4],
+        }
+        for r in rows
+    ]
+
+
+@router.get("/bodegas/existencias", response_model=list[BodegaExistencias])
+async def existencias_por_bodega(
+    _usuario: UsuarioActual = requiere_roles(*ROLES_ESCRITURA),
+    conn=Depends(get_db),
+):
+    """
+    Existencias agregadas por bodega (y por extensión, por sucursal — el
+    frontend agrupa client-side usando sucursal_id). Es un endpoint aparte
+    de GET /bodegas a propósito: ese es el que alimenta el dropdown de
+    captura y debe ser barato de pedir en cada carga del formulario; este
+    hace un SUM sobre movimientos_inventario y solo se pide donde
+    realmente hace falta (Sucursales.jsx).
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT
+                b.id, b.nombre, b.sucursal_id, s.nombre AS sucursal_nombre,
+                COALESCE(SUM(m.cantidad), 0) AS total_existencias
+            FROM   bodegas b
+            LEFT   JOIN sucursales s ON s.id = b.sucursal_id
+            LEFT   JOIN movimientos_inventario m ON m.bodega_id = b.id
+            GROUP BY b.id, b.nombre, b.sucursal_id, s.nombre
+            ORDER BY s.nombre NULLS LAST, b.nombre
+            """
+        )
+        rows = await cur.fetchall()
+    return [
+        {
+            "id": r[0], "nombre": r[1], "sucursal_id": r[2],
+            "sucursal_nombre": r[3], "total_existencias": r[4],
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Endpoints — Movimientos de inventario (restock)
 # ---------------------------------------------------------------------------
 
@@ -537,15 +654,24 @@ async def registrar_movimiento_inventario(
         if await cur.fetchone() is None:
             raise HTTPException(status_code=404, detail="Producto no encontrado")
 
+        # Si viene bodega_id (migración 012), su nombre GANA sobre cualquier
+        # texto libre enviado en 'ubicacion' — bodega_id es la fuente
+        # estructurada, ubicacion es solo el espejo que necesita el trigger.
+        # Si no viene bodega_id, se comporta exactamente como antes
+        # (compatibilidad hacia atrás con el dropdown de texto libre viejo).
+        ubicacion = data.ubicacion
+        if data.bodega_id is not None:
+            ubicacion = await _resolver_bodega_ubicacion(cur, data.bodega_id)
+
         await cur.execute(
             """
             INSERT INTO movimientos_inventario
-                (producto_id, cantidad, fecha, ubicacion, usuario_id, proveedor_id, costo_unitario)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (producto_id, cantidad, fecha, ubicacion, bodega_id, usuario_id, proveedor_id, costo_unitario)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, costo_total
             """,
             (
-                producto_id, data.cantidad, fecha, data.ubicacion, usuario.id,
+                producto_id, data.cantidad, fecha, ubicacion, data.bodega_id, usuario.id,
                 data.proveedor_id, data.costo_unitario,
             ),
         )
@@ -565,7 +691,8 @@ async def registrar_movimiento_inventario(
         "producto_id": producto_id,
         "cantidad": data.cantidad,
         "fecha": fecha,
-        "ubicacion": data.ubicacion,
+        "ubicacion": ubicacion,
+        "bodega_id": data.bodega_id,
         "proveedor_id": data.proveedor_id,
         "costo_unitario": float(data.costo_unitario) if data.costo_unitario is not None else None,
         "costo_total": float(costo_total) if costo_total is not None else None,
@@ -600,12 +727,14 @@ async def listar_movimientos_inventario(
             """
             SELECT
                 m.id, m.producto_id, m.cantidad, m.fecha, m.ubicacion,
+                m.bodega_id, bod.nombre AS nombre_bodega,
                 m.usuario_id, u.nombre AS nombre_usuario, m.creado_en,
                 m.proveedor_id, prov.proveedor AS nombre_proveedor,
                 m.costo_unitario, m.costo_total
             FROM  movimientos_inventario m
             LEFT  JOIN usuarios    u    ON u.id    = m.usuario_id
             LEFT  JOIN proveedores prov ON prov.id = m.proveedor_id
+            LEFT  JOIN bodegas     bod  ON bod.id  = m.bodega_id
             WHERE m.producto_id = %s
             ORDER BY m.fecha DESC, m.id DESC
             """,
@@ -616,11 +745,12 @@ async def listar_movimientos_inventario(
     return [
         {
             "id": r[0], "producto_id": r[1], "cantidad": r[2], "fecha": r[3],
-            "ubicacion": r[4], "usuario_id": r[5], "nombre_usuario": r[6],
-            "creado_en": r[7],
-            "proveedor_id": r[8], "nombre_proveedor": r[9],
-            "costo_unitario": float(r[10]) if r[10] is not None else None,
-            "costo_total": float(r[11]) if r[11] is not None else None,
+            "ubicacion": r[4], "bodega_id": r[5], "nombre_bodega": r[6],
+            "usuario_id": r[7], "nombre_usuario": r[8],
+            "creado_en": r[9],
+            "proveedor_id": r[10], "nombre_proveedor": r[11],
+            "costo_unitario": float(r[12]) if r[12] is not None else None,
+            "costo_total": float(r[13]) if r[13] is not None else None,
         }
         for r in rows
     ]
@@ -647,13 +777,21 @@ async def editar_movimiento_inventario(
     if not campos:
         raise HTTPException(status_code=422, detail="No hay campos para actualizar")
 
-    set_sql, valores = _set_clause(campos)
     async with conn.cursor() as cur:
+        # Si bodega_id se envía (y no es null), su nombre GANA sobre
+        # cualquier 'ubicacion' que también haya venido en el mismo
+        # request — mismo criterio que en el POST, para que nunca queden
+        # desincronizados. Si bodega_id se envía como null (quitar el
+        # enlace), 'ubicacion' se deja tal como la haya mandado el cliente.
+        if campos.get("bodega_id") is not None:
+            campos["ubicacion"] = await _resolver_bodega_ubicacion(cur, campos["bodega_id"])
+
+        set_sql, valores = _set_clause(campos)
         await cur.execute(
             f"""
             UPDATE movimientos_inventario SET {set_sql}
             WHERE id = %s AND producto_id = %s
-            RETURNING id, producto_id, cantidad, fecha, ubicacion,
+            RETURNING id, producto_id, cantidad, fecha, ubicacion, bodega_id,
                       proveedor_id, costo_unitario, costo_total
             """,
             valores + [movimiento_id, producto_id],
@@ -675,9 +813,10 @@ async def editar_movimiento_inventario(
         "cantidad": row[2],
         "fecha": row[3],
         "ubicacion": row[4],
-        "proveedor_id": row[5],
-        "costo_unitario": float(row[6]) if row[6] is not None else None,
-        "costo_total": float(row[7]) if row[7] is not None else None,
+        "bodega_id": row[5],
+        "proveedor_id": row[6],
+        "costo_unitario": float(row[7]) if row[7] is not None else None,
+        "costo_total": float(row[8]) if row[8] is not None else None,
         "existencias_totales": existencias_totales,
         "fecha_ingreso_producto": fecha_ingreso_producto,
         "ubicaciones_producto": ubicaciones_producto or [],

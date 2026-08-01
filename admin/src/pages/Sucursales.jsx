@@ -28,6 +28,7 @@ async function leerError(res) {
 
 export default function Sucursales() {
   const [sucursales, setSucursales]   = useState([])
+  const [bodegas, setBodegas]         = useState([])   // GET /bodegas/existencias — solo lectura
   const [cargando, setCargando]       = useState(true)
   const [error, setError]             = useState(null)
   const [editando, setEditando]       = useState(null) // sucursal en edición, o null
@@ -40,10 +41,16 @@ export default function Sucursales() {
     setCargando(true)
     setError(null)
     try {
-      const res = await apiFetch('/sucursales')
-      if (res.status === 401) { await logout(); navigate('/login'); return }
-      if (!res.ok) throw new Error('No se pudo cargar las sucursales.')
-      setSucursales(await res.json())
+      const [resSuc, resBod] = await Promise.all([
+        apiFetch('/sucursales'),
+        apiFetch('/bodegas/existencias'),
+      ])
+      if (resSuc.status === 401 || resBod.status === 401) { await logout(); navigate('/login'); return }
+      if (!resSuc.ok) throw new Error('No se pudo cargar las sucursales.')
+      setSucursales(await resSuc.json())
+      // Bodegas es secundario: si falla, las sucursales igual se muestran,
+      // solo sin el desglose de existencias.
+      setBodegas(resBod.ok ? await resBod.json() : [])
     } catch (err) {
       setError(err.message)
     } finally {
@@ -106,7 +113,7 @@ export default function Sucursales() {
                   </p>
                   {s.ocultar_precio_publico && (
                     <p className="text-xs text-amber-600 mt-1">
-                      El sitio muestra "Consultar por WhatsApp" en vez de precio para esta sucursal
+                      Precios ocultos en el sitio público — los clientes ven un botón de WhatsApp en su lugar
                     </p>
                   )}
                 </div>
@@ -120,6 +127,8 @@ export default function Sucursales() {
                   </button>
                 )}
               </div>
+
+              <BodegasDeSucursal bodegas={bodegas.filter((b) => b.sucursal_id === s.id)} />
             </div>
           ))}
         </div>
@@ -133,6 +142,32 @@ export default function Sucursales() {
         />
       )}
     </Layout>
+  )
+}
+
+
+// Lista de solo lectura de las bodegas de una sucursal, con sus existencias
+// actuales (GET /bodegas/existencias). No hay crear/editar bodegas todavía
+// — igual que sucursales, viven fijas desde la migración 012.
+function BodegasDeSucursal({ bodegas }) {
+  if (bodegas.length === 0) return null
+
+  const total = bodegas.reduce((acc, b) => acc + b.total_existencias, 0)
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+        Bodegas — {total} pieza{total !== 1 ? 's' : ''} en total
+      </p>
+      <div className="space-y-1">
+        {bodegas.map((b) => (
+          <div key={b.id} className="flex items-center justify-between text-sm">
+            <span className="text-gray-600">{b.nombre}</span>
+            <span className="text-gray-400">{b.total_existencias} pieza{b.total_existencias !== 1 ? 's' : ''}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -276,11 +311,11 @@ function SucursalModal({ sucursal, onGuardado, onCerrar }) {
             />
             <div>
               <span className="text-sm font-medium text-gray-700">
-                Ocultar precio en el sitio público
+                Ocultar los precios de esta sucursal en el sitio público
               </span>
               <p className="text-xs text-gray-400">
-                Si lo activas, el sitio muestra "Consultar por WhatsApp" en vez del precio
-                para todo lo que vende esta sucursal.
+                Si lo activas, los clientes NO ven el precio de lo que vende esta sucursal en la
+                página — en su lugar ven un botón para preguntar por WhatsApp.
               </p>
             </div>
           </label>

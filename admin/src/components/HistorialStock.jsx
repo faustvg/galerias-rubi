@@ -36,11 +36,14 @@ import { useState, useEffect } from 'react'
 import { apiFetch } from '../api'
 import ConfirmDialog from './ConfirmDialog'
 
-const UBICACIONES_OPCIONES = ['Local Mexico', 'Local Jose', 'Local Amarillo', 'Almacen']
-
 const hoy = () => new Date().toISOString().slice(0, 10)
 
-const FORM_VACÍO = { cantidad: '', fecha: hoy(), ubicacion: '', proveedorId: '', costoUnitario: '' }
+// bodegaId: selector estructurado (migración 012), alimentado por GET /bodegas.
+// ubicacionLibre: NO es un input editable — solo guarda el texto libre
+// histórico de un movimiento viejo que nunca tuvo bodega_id, para no
+// perderlo silenciosamente si el renglón se edita sin tocar la ubicación
+// (ver iniciarEdicion). Las capturas nuevas siempre usan bodegaId.
+const FORM_VACÍO = { cantidad: '', fecha: hoy(), bodegaId: '', ubicacionLibre: '', proveedorId: '', costoUnitario: '' }
 
 const formatFecha = (fecha) =>
   fecha
@@ -59,6 +62,15 @@ export default function HistorialStock({ productoId, proveedores, onProductoActu
   const [historial, setHistorial] = useState([])
   const [cargando, setCargando]   = useState(true)
   const [error, setError]         = useState(null)
+
+  // Bodegas (migración 012) — reemplaza la lista fija que había antes.
+  const [bodegas, setBodegas] = useState([])
+  useEffect(() => {
+    apiFetch('/bodegas')
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setBodegas)
+      .catch(() => setBodegas([]))
+  }, [])
 
   // --- Formulario compartido: agregar (editandoId === null) o editar ---
   const [form, setForm]           = useState(FORM_VACÍO)
@@ -96,7 +108,11 @@ export default function HistorialStock({ productoId, proveedores, onProductoActu
     setForm({
       cantidad:      String(mov.cantidad),
       fecha:         mov.fecha,
-      ubicacion:     mov.ubicacion ?? '',
+      bodegaId:      mov.bodega_id?.toString() ?? '',
+      // Solo se llena si el movimiento es viejo y nunca tuvo bodega_id —
+      // así no se pierde el texto libre histórico si el admin guarda sin
+      // tocar la ubicación (ver nota en FORM_VACÍO).
+      ubicacionLibre: !mov.bodega_id ? (mov.ubicacion ?? '') : '',
       proveedorId:   mov.proveedor_id?.toString() ?? '',
       costoUnitario: mov.costo_unitario?.toString() ?? '',
     })
@@ -119,7 +135,13 @@ export default function HistorialStock({ productoId, proveedores, onProductoActu
       const payload = {
         cantidad,
         fecha:          form.fecha || null,
-        ubicacion:      form.ubicacion || null,
+        // Si se eligió bodega, el backend resuelve 'ubicacion' desde su
+        // nombre (gana sobre cualquier texto) — no hace falta mandarlo.
+        // Si no hay bodega elegida, se preserva el texto libre histórico
+        // (ubicacionLibre) para no perderlo en un guardado que no tocó
+        // la ubicación.
+        bodega_id:      form.bodegaId ? parseInt(form.bodegaId) : null,
+        ubicacion:      form.bodegaId ? undefined : (form.ubicacionLibre || null),
         proveedor_id:   form.proveedorId ? parseInt(form.proveedorId) : null,
         costo_unitario: form.costoUnitario !== '' ? parseFloat(form.costoUnitario) : null,
       }
@@ -222,12 +244,20 @@ export default function HistorialStock({ productoId, proveedores, onProductoActu
                 className={inputCls}
               />
             </div>
-            <select value={form.ubicacion} onChange={cambiar('ubicacion')} className={inputCls}>
-              <option value="">— Sin ubicación —</option>
-              {UBICACIONES_OPCIONES.map((ubi) => (
-                <option key={ubi} value={ubi}>{ubi}</option>
+            <select value={form.bodegaId} onChange={cambiar('bodegaId')} className={inputCls}>
+              <option value="">— Sin bodega —</option>
+              {bodegas.filter((b) => b.activo).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.nombre}{b.sucursal_nombre ? ` — ${b.sucursal_nombre}` : ''}
+                </option>
               ))}
             </select>
+            {form.ubicacionLibre && !form.bodegaId && (
+              <p className="text-xs text-gray-400">
+                Ubicación registrada anteriormente (texto libre): <span className="font-medium">{form.ubicacionLibre}</span>.
+                Elige una bodega arriba para actualizarla.
+              </p>
+            )}
             <select value={form.proveedorId} onChange={cambiar('proveedorId')} className={inputCls}>
               <option value="">— Sin proveedor —</option>
               {proveedores.map((p) => (
@@ -313,7 +343,7 @@ export default function HistorialStock({ productoId, proveedores, onProductoActu
                         <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{formatFecha(m.fecha)}</td>
                         <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">+{m.cantidad}</td>
                         <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                          {m.ubicacion || '—'}
+                          {m.nombre_bodega || m.ubicacion || '—'}
                           {m.nombre_usuario && (
                             <span className="block text-xs text-gray-400">{m.nombre_usuario}</span>
                           )}
