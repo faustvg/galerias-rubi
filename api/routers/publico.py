@@ -108,13 +108,18 @@ class SucursalPublica(BaseModel):
     sucursal alimenta los CTAs genéricos (burbuja de WhatsApp, footer)
     SIN comparar contra el texto de 'nombre' — ese es editable desde el
     panel y no debe usarse como llave de negocio (ver comentario en
-    schema.sql / migración 011)."""
+    schema.sql / migración 011).
+    lat/lng (migración 014) solo se incluyen cuando la sucursal ya tiene
+    coordenadas cargadas — el frontend los usa únicamente si el usuario
+    hace clic en "Usar mi ubicación" (nunca automático)."""
     id:           int
     nombre:       str
     direccion:    Optional[str]
     maps_url:     Optional[str]
     whatsapp:     Optional[str]
     es_principal: bool
+    lat:          Optional[float] = None
+    lng:          Optional[float] = None
 
 
 class TestimonioPublico(BaseModel):
@@ -290,7 +295,7 @@ async def sucursales_publicas(conn=Depends(get_db)):
     async with conn.cursor() as cur:
         await cur.execute(
             """
-            SELECT id, nombre, direccion, maps_url, whatsapp, es_principal
+            SELECT id, nombre, direccion, maps_url, whatsapp, es_principal, lat, lng
             FROM   sucursales
             WHERE  activo = true
             ORDER BY id
@@ -301,6 +306,8 @@ async def sucursales_publicas(conn=Depends(get_db)):
         {
             "id": r[0], "nombre": r[1], "direccion": r[2],
             "maps_url": r[3], "whatsapp": r[4], "es_principal": r[5],
+            "lat": float(r[6]) if r[6] is not None else None,
+            "lng": float(r[7]) if r[7] is not None else None,
         }
         for r in rows
     ]

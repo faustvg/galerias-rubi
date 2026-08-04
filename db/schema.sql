@@ -142,6 +142,12 @@ CREATE INDEX idx_productos_destacados ON productos (destacados) WHERE destacados
 --      nunca queden 0 o 2+ sucursales marcadas principal por accidente.
 --      ⚠️ Asume EXACTAMENTE 2 sucursales — una tercera requeriría
 --      refactor a un modelo genérico, no solo este booleano.
+--    lat/lng (migración 014): coordenadas para sugerir la sucursal más
+--      cercana en el sitio público (geolocalización opcional, nunca
+--      automática — ver producto.html). Nullable: CDMX queda en NULL
+--      hasta que se le asignen coordenadas reales al activarla. San
+--      Pedro usa precisión de pueblo (INEGI), suficiente para comparar
+--      contra CDMX (~44 km) sin necesitar la coordenada exacta.
 -- ------------------------------------------------------------
 CREATE TABLE sucursales (
     id                     SERIAL PRIMARY KEY,
@@ -152,7 +158,9 @@ CREATE TABLE sucursales (
     whatsapp               VARCHAR(20),
     ocultar_precio_publico BOOLEAN NOT NULL DEFAULT false,
     activo                 BOOLEAN NOT NULL DEFAULT true,
-    es_principal           BOOLEAN NOT NULL DEFAULT false
+    es_principal           BOOLEAN NOT NULL DEFAULT false,
+    lat                    NUMERIC(10,7),
+    lng                    NUMERIC(10,7)
 );
 
 
@@ -533,12 +541,12 @@ CREATE SEQUENCE IF NOT EXISTS notas_digital_seq START 1;
 -- placeholders y activo=false hasta que la familia complete sus
 -- datos reales desde el panel (Sucursales.jsx) y la active.
 -- ------------------------------------------------------------
-INSERT INTO sucursales (nombre, razon_social, direccion, maps_url, whatsapp, ocultar_precio_publico, activo, es_principal) VALUES
+INSERT INTO sucursales (nombre, razon_social, direccion, maps_url, whatsapp, ocultar_precio_publico, activo, es_principal, lat, lng) VALUES
   ('San Pedro Tultepec', 'Muebles Rubí',
    'C. Benito Juárez 73, C. Benito Juárez Manzana 033, 52030 San Pedro Tultepec, Lerma, Estado de México',
-   NULL, '5217225723939', false, true, true),
+   NULL, '5217225723939', false, true, true, 19.2664, -99.5130),
   ('Ciudad de México', 'Muebles Local No.17',
-   'PENDIENTE — completar desde el panel', NULL, NULL, true, false, false);
+   'PENDIENTE — completar desde el panel', NULL, NULL, true, false, false, NULL, NULL);
 
 
 -- ------------------------------------------------------------

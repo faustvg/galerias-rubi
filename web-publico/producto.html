@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Producto — Muebles Rubí</title>
-  <link rel="icon" type="image/png" href="assets/logo.jpg">
+  <link rel="icon" type="image/png" href="assets/logo.png">
   <meta name="description" content="Muebles artesanales en madera de pino y chapa de parota. Diseño a medida con más de 30 años de tradición familiar en San Pedro Tultepec, Lerma." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -285,17 +285,6 @@
     }
 
     /* ── INFO ── */
-    .prod-precio {
-      font-family: var(--serif);
-      font-size: 2.2rem;
-      font-weight: 300;
-      color: var(--btn);
-      margin: 1.2rem 0 1.8rem;
-      display: flex;
-      align-items: baseline;
-      gap: .9rem;
-      flex-wrap: wrap;
-    }
     /* precio de lista tachado — solo aparece cuando hay oferta */
     .precio-original {
       font-size: 1.35rem;
@@ -303,40 +292,98 @@
       text-decoration: line-through;
       text-decoration-thickness: 1px;
     }
-    /* ── Precio por sucursal (migración 011/012) ──
-       Cada sucursal donde se vende el producto tiene su propio bloque, con
-       la MISMA jerarquía visual — el objetivo es que sea imposible
-       malinterpretar que el precio cambia según dónde se compre. */
-    .precio-bloque { margin: 1.2rem 0; }
-    .precio-bloque-label {
+    /* ── Ficha de sucursales (migración 011/012) ──
+       Reemplaza el bloque de precio/CTA anterior (precio grande + nota de
+       CDMX en prosa) por una ficha informativa neutral: cada sucursal es
+       una FILA con el MISMO peso visual — nunca "principal" vs "nota al
+       pie". San Pedro siempre aparece; CDMX solo si disponible_cdmx=true. */
+    .ficha-sucursales {
+      margin: 1.4rem 0 1.8rem;
+      border: 1px solid rgba(77,54,46,.16);
+    }
+    .ficha-sucursales-titulo {
       font-family: var(--sans);
       font-size: .72rem;
       font-weight: 500;
-      letter-spacing: .14em;
+      letter-spacing: .16em;
       text-transform: uppercase;
-      color: var(--accent2);
-      margin-bottom: .35rem;
+      color: var(--accent1);
+      padding: .9rem 1.2rem .7rem;
     }
-    .precio-bloque-cdmx {
-      padding-top: 1.1rem;
-      margin-top: .2rem;
-      border-top: 1px solid rgba(77,54,46,.12);
-    }
-    /* CTA cuando esa sucursal oculta el precio — mismo peso que un precio
-       real, no una nota al pie: ícono de ubicación (mismo pin de Contacto
-       en index.html) + color de acento de marca, nunca gris apagado. */
-    .precio-cdmx-cta {
+    .ficha-sucursal-fila {
       display: flex;
-      align-items: flex-start;
-      gap: .7rem;
-      color: var(--btn);
-      font-family: var(--serif);
-      font-size: 1.15rem;
-      font-weight: 400;
-      line-height: 1.5;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .4rem 1rem;
+      padding: .9rem 1.2rem;
+      border-top: 1px solid rgba(77,54,46,.12);
+      transition: background .2s;
     }
-    .precio-cdmx-cta svg { flex-shrink: 0; margin-top: .3rem; }
-    .precio-cdmx-cta a { color: var(--btn); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+    /* Resaltado por geolocalización/preferencia guardada (Tarea 2) — nunca
+       oculta la otra fila, solo marca cuál es la más cercana/preferida. */
+    .ficha-sucursal-fila.destacada { background: rgba(164,100,71,.07); }
+    .ficha-sucursal-info {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      color: var(--text);
+    }
+    .ficha-sucursal-info svg { flex-shrink: 0; color: var(--btn); }
+    .ficha-sucursal-nombre { font-family: var(--sans); font-size: .92rem; }
+    .ficha-sucursal-precio {
+      font-family: var(--serif);
+      font-size: 1.3rem;
+      color: var(--btn);
+      text-align: right;
+      white-space: nowrap;
+      display: flex;
+      align-items: baseline;
+      gap: .5rem;
+    }
+    .ficha-sucursal-precio .precio-original { font-size: 1rem; }
+    .ficha-sucursal-precio .chip-descuento { font-size: .6rem; padding: .3rem .5rem .26rem; }
+    .ficha-precio-label {
+      font-family: var(--sans);
+      font-size: .78rem;
+      font-weight: 400;
+      color: var(--accent2);
+    }
+    /* CTA cuando esa sucursal oculta el precio — mismo peso visual que un
+       precio real, nunca gris apagado ni nota al pie. */
+    .ficha-sucursal-precio a {
+      font-family: var(--sans);
+      font-size: .84rem;
+      font-weight: 600;
+      color: var(--btn);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      white-space: normal;
+      text-align: right;
+    }
+    /* Botón de geolocalización (Tarea 2) — discreto, opcional, nunca se
+       dispara solo con la carga de la página. */
+    .ficha-geo-btn {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      width: 100%;
+      background: none;
+      border: none;
+      border-top: 1px solid rgba(77,54,46,.12);
+      padding: .8rem 1.2rem;
+      font-family: var(--sans);
+      font-size: .78rem;
+      color: var(--accent1);
+      cursor: pointer;
+      transition: color .2s;
+    }
+    .ficha-geo-btn:hover { color: var(--btn); }
+    .ficha-geo-mensaje {
+      padding: 0 1.2rem .9rem;
+      font-size: .74rem;
+      color: var(--accent2);
+    }
 
     /* chip de % junto al precio — mismo lenguaje que la etiqueta de las
        tarjetas del catálogo */
@@ -426,9 +473,9 @@
     .footer-bottom p { font-size: .78rem; opacity: .55; }
 
     /* ── Redes sociales + métodos de pago (mismo criterio que index.html) ── */
-    .footer-social { display: flex; gap: .8rem; margin-top: 1.3rem; }
-    .footer-social a { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(250,248,245,.35); border-radius: 50%; color: var(--white); transition: background .2s, border-color .2s; }
-    .footer-social a:hover { background: rgba(250,248,245,.15); border-color: rgba(250,248,245,.6); }
+    .footer-social { display: flex; gap: 1rem; margin-top: 1.3rem; }
+    .footer-social a { width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(250,248,245,.4); border-radius: 50%; color: var(--white); transition: background .2s, border-color .2s, transform .2s; }
+    .footer-social a:hover { background: rgba(250,248,245,.18); border-color: rgba(250,248,245,.7); transform: translateY(-2px); }
     .footer-pagos { padding-top: 2.5rem; margin-top: 2.5rem; border-top: 1px solid rgba(250,248,245,.18); }
     .footer-pagos-label { display: block; font-size: .68rem; letter-spacing: .16em; text-transform: uppercase; opacity: .55; margin-bottom: 1rem; }
     .footer-pagos-iconos { display: flex; flex-wrap: wrap; gap: .6rem; }
@@ -479,7 +526,7 @@
     </ul>
     <div class="logo">
       <a href="index.html">
-        <img src="assets/logo_transparente.png" alt="Muebles Rubí" />
+        <img src="assets/logo.png" alt="Muebles Rubí" />
       </a>
     </div>
     <ul class="nav-right">
@@ -543,25 +590,35 @@
         <h1 class="section-title" id="prod-nombre"></h1>
         <div class="divider"></div>
 
-        <!-- Precio por sucursal (migración 011/012). Si el producto NO está
-             disponible en CDMX, prod-precio-label queda oculto y esto se ve
-             exactamente como antes (solo el precio, sin etiqueta). Si SÍ lo
-             está, ambos bloques se muestran con la misma jerarquía visual —
-             ver renderProducto() para la lógica completa. -->
-        <div class="precio-bloque" id="precio-bloque-sanpedro" style="display:none">
-          <p class="precio-bloque-label" id="prod-precio-label" style="display:none"></p>
-          <p class="prod-precio" id="prod-precio"></p>
-        </div>
+        <!-- Ficha de sucursales (migración 011/012/014). Reemplaza el precio
+             grande + nota de CDMX en prosa por una ficha neutral: una fila
+             por sucursal, mismo peso visual. San Pedro siempre aparece;
+             CDMX solo si disponible_cdmx=true — ver renderProducto(). -->
+        <div class="ficha-sucursales" id="ficha-sucursales" style="display:none">
+          <p class="ficha-sucursales-titulo">Sucursales disponibles</p>
 
-        <div class="precio-bloque precio-bloque-cdmx" id="precio-bloque-cdmx" style="display:none">
-          <p class="precio-bloque-label" id="precio-cdmx-label">Ciudad de México</p>
-          <!-- CDMX muestra precio (ocultar_precio_publico=false) -->
-          <p class="prod-precio" id="prod-precio-cdmx" style="display:none"></p>
-          <!-- CDMX oculta precio (default) — CTA con ícono de ubicación -->
-          <div class="precio-cdmx-cta" id="precio-cdmx-cta" style="display:none">
-            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-            <p>También disponible en CDMX. El precio varía por sucursal — <a id="precio-cdmx-cta-link" href="#" target="_blank" rel="noopener">consúltanos por WhatsApp</a>.</p>
+          <div class="ficha-sucursal-fila" id="fila-sanpedro" data-sucursal-id="">
+            <div class="ficha-sucursal-info">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+              <span class="ficha-sucursal-nombre" id="fila-sanpedro-nombre">San Pedro Tultepec</span>
+            </div>
+            <span class="ficha-sucursal-precio" id="fila-sanpedro-precio"></span>
           </div>
+
+          <div class="ficha-sucursal-fila" id="fila-cdmx" data-sucursal-id="" style="display:none">
+            <div class="ficha-sucursal-info">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+              <span class="ficha-sucursal-nombre" id="fila-cdmx-nombre">Ciudad de México</span>
+            </div>
+            <span class="ficha-sucursal-precio" id="fila-cdmx-precio"></span>
+          </div>
+
+          <!-- Geolocalización opcional (Tarea 2) — nunca se dispara sola. -->
+          <button type="button" class="ficha-geo-btn" id="btn-geo">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            Usar mi ubicación
+          </button>
+          <p class="ficha-geo-mensaje" id="geo-mensaje" style="display:none"></p>
         </div>
 
         <div class="prod-detalles" id="prod-detalles" style="display:none"></div>
@@ -607,10 +664,10 @@
 
       <div class="footer-social">
         <a href="https://www.facebook.com/mueblesrubimx" target="_blank" rel="noopener" aria-label="Muebles Rubí en Facebook">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-8.06h2.7l.4-3.13h-3.1V7.83c0-.9.25-1.52 1.55-1.52h1.66V3.5c-.29-.04-1.27-.12-2.41-.12-2.38 0-4.02 1.45-4.02 4.12v2.3H7.56v3.13h2.72V21h3.22z"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-8.06h2.7l.4-3.13h-3.1V7.83c0-.9.25-1.52 1.55-1.52h1.66V3.5c-.29-.04-1.27-.12-2.41-.12-2.38 0-4.02 1.45-4.02 4.12v2.3H7.56v3.13h2.72V21h3.22z"/></svg>
         </a>
         <a href="https://www.instagram.com/mueblesrubimx/" target="_blank" rel="noopener" aria-label="Muebles Rubí en Instagram">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1"/></svg>
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1"/></svg>
         </a>
       </div>
     </div>
@@ -690,6 +747,10 @@
   // /publico/sucursales haya cargado a tiempo.
   let nombrePrincipal = 'San Pedro Tultepec'
   let nombreCdmx = 'Ciudad de México'
+
+  // Tarea 2 (migración 014) — geolocalización opcional + preferencia recordada.
+  const LS_KEY_SUCURSAL = 'mr_sucursal_preferida'
+  let sucursalesConCoords = []
 
   function fotoUrl(ruta) {
     if (!ruta) return null
@@ -821,17 +882,20 @@
     // Nombre
     document.getElementById('prod-nombre').textContent = p.nombre
 
-    // Precio — con oferta: precio de lista tachado + precio final + chip %.
-    // Solo valores numéricos formateados van al innerHTML, nada del usuario.
+    // Ficha de sucursales — San Pedro siempre aparece con "Precio: $X,XXX"
+    // (con oferta: precio de lista tachado + precio final + chip %). Solo
+    // valores numéricos formateados van al innerHTML, nada del usuario.
     const conDescuento = p.descuento_pct > 0 && p.precio_base > p.precio_efectivo
     if (p.precio_efectivo > 0) {
-      const el = document.getElementById('prod-precio')
-      el.innerHTML = conDescuento
+      const valor = conDescuento
         ? `<span class="precio-original">${formatPrecio(p.precio_base)}</span>` +
           `<span>${formatPrecio(p.precio_efectivo)}</span>` +
           `<span class="chip-descuento">−${Math.round(p.descuento_pct)}%</span>`
         : formatPrecio(p.precio_efectivo)
-      document.getElementById('precio-bloque-sanpedro').style.display = ''
+      document.getElementById('fila-sanpedro-precio').innerHTML =
+        `<span class="ficha-precio-label">Precio:</span>${valor}`
+      document.getElementById('fila-sanpedro-nombre').textContent = nombrePrincipal
+      document.getElementById('ficha-sucursales').style.display = ''
     }
 
     // Detalles (material, color)
@@ -859,50 +923,40 @@
     )
     document.getElementById('btn-wa').href = `https://wa.me/${waPrincipal}?text=${msg}`
 
-    // Precio por sucursal (migración 011/012): si el producto NO está
-    // disponible en CDMX, precio-bloque-cdmx se queda oculto y la página se
-    // ve exactamente como antes (solo el precio de San Pedro, sin etiqueta
-    // de sucursal). Si SÍ está disponible, ambos bloques quedan con la
-    // MISMA jerarquía visual — objetivo explícito: que sea imposible
-    // malinterpretar que el precio cambia según la sucursal.
+    // Fila de CDMX en la ficha: si el producto NO está disponible en CDMX,
+    // fila-cdmx se queda oculta y la ficha se ve solo con San Pedro. Si SÍ
+    // está disponible, ambas filas quedan con la MISMA jerarquía visual —
+    // objetivo explícito: que sea imposible malinterpretar que el precio
+    // cambia según la sucursal (ficha informativa neutral, no comparación).
     //
     // Intencionalmente específico a "CDMX" — con solo 2 sucursales no vale
     // la pena una lista genérica (mismo criterio que ProductoPublico en el
     // backend). Si se agrega una tercera sucursal, este bloque necesita
     // refactorizarse.
     if (p.disponible_cdmx) {
-      document.getElementById('prod-precio-label').textContent = nombrePrincipal
-      document.getElementById('prod-precio-label').style.display = ''
-      document.getElementById('precio-cdmx-label').textContent = nombreCdmx
-      document.getElementById('precio-bloque-cdmx').style.display = ''
+      document.getElementById('fila-cdmx-nombre').textContent = nombreCdmx
+      document.getElementById('fila-cdmx').style.display = ''
 
-      const precioCdmxEl = document.getElementById('prod-precio-cdmx')
-      const ctaCdmxEl     = document.getElementById('precio-cdmx-cta')
+      const precioEl = document.getElementById('fila-cdmx-precio')
 
       if (p.precio_cdmx != null) {
         // ocultar_precio_publico=false para CDMX: mismo tratamiento que el
         // precio de San Pedro, igual de prominente.
-        precioCdmxEl.textContent = formatPrecio(p.precio_cdmx)
-        precioCdmxEl.style.display = ''
-        ctaCdmxEl.style.display = 'none'
+        precioEl.innerHTML = `<span class="ficha-precio-label">Precio:</span>${formatPrecio(p.precio_cdmx)}`
       } else {
-        // ocultar_precio_publico=true para CDMX (default): CTA con ícono +
-        // color de acento, apuntando al WhatsApp de CDMX.
-        const linkEl = document.getElementById('precio-cdmx-cta-link')
+        // ocultar_precio_publico=true para CDMX (default): la fila entera
+        // se vuelve un CTA clickeable con el mismo peso visual del precio,
+        // no una nota al pie en gris.
+        const msgCdmx = encodeURIComponent(
+          `Hola, me interesa el mueble: *${p.nombre}* en la sucursal ${nombreCdmx}. ¿Cuál es el precio y la disponibilidad?`
+        )
         if (waCdmx) {
-          const msgCdmx = encodeURIComponent(
-            `Hola, me interesa el mueble: *${p.nombre}* en la sucursal ${nombreCdmx}. ¿Cuál es el precio?`
-          )
-          linkEl.href = `https://wa.me/${waCdmx}?text=${msgCdmx}`
-          linkEl.textContent = 'consúltanos por WhatsApp'
+          precioEl.innerHTML = `<a href="https://wa.me/${waCdmx}?text=${msgCdmx}" target="_blank" rel="noopener">Consulta precio y disponibilidad</a>`
         } else {
           // Sin número de CDMX disponible (p.ej. /publico/sucursales falló):
           // nunca generar wa.me/null — se deja como texto plano, sin link.
-          linkEl.removeAttribute('href')
-          linkEl.textContent = 'consulta con nosotros'
+          precioEl.textContent = 'Consulta precio y disponibilidad'
         }
-        precioCdmxEl.style.display = 'none'
-        ctaCdmxEl.style.display = ''
       }
     }
 
@@ -967,7 +1021,102 @@
     const cdmx = sucursales.find(s => !s.es_principal)
     if (cdmx?.whatsapp) waCdmx = cdmx.whatsapp
     if (cdmx?.nombre) nombreCdmx = cdmx.nombre
+
+    // Tarea 2 (migración 014): guarda las sucursales con id para el cálculo
+    // de distancia, y liga cada fila de la ficha a su sucursal real vía
+    // data-sucursal-id — así el botón de geolocalización y el clic manual
+    // en una fila saben a cuál sucursal se refieren.
+    sucursalesConCoords = sucursales
+    const filaSanPedro = document.getElementById('fila-sanpedro')
+    const filaCdmx      = document.getElementById('fila-cdmx')
+    if (filaSanPedro && principal) filaSanPedro.dataset.sucursalId = principal.id
+    if (filaCdmx && cdmx)          filaCdmx.dataset.sucursalId = cdmx.id
   }
+
+  /* Tarea 2 (migración 014) — distancia entre dos puntos lat/lng en km. */
+  function haversineKm(lat1, lng1, lat2, lng2) {
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) ** 2
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  }
+
+  function _marcarSucursalPreferida(sucursalId) {
+    document.querySelectorAll('.ficha-sucursal-fila').forEach(fila => {
+      fila.classList.toggle('destacada', fila.dataset.sucursalId === String(sucursalId))
+    })
+  }
+
+  function _seleccionarSucursal(sucursalId) {
+    if (!sucursalId) return
+    _marcarSucursalPreferida(sucursalId)
+    try { localStorage.setItem(LS_KEY_SUCURSAL, String(sucursalId)) } catch {}
+  }
+
+  // Preferencia guardada de una visita anterior — se aplica en cuanto las
+  // filas tienen su data-sucursal-id (después de aplicarSucursales), sin
+  // pedir permiso de ubicación: solo lee localStorage.
+  function _aplicarPreferenciaGuardada() {
+    let guardada = null
+    try { guardada = localStorage.getItem(LS_KEY_SUCURSAL) } catch {}
+    if (guardada) _marcarSucursalPreferida(guardada)
+  }
+
+  function _mostrarMensajeGeo(texto) {
+    const msg = document.getElementById('geo-mensaje')
+    if (!msg) return
+    msg.textContent = texto
+    msg.style.display = ''
+  }
+
+  // Wiring de la ficha de sucursales: clic manual en una fila + botón de
+  // geolocalización. Nada de esto dispara permisos ni red por sí solo —
+  // getCurrentPosition() solo se llama dentro del click handler de #btn-geo.
+  function initFichaSucursales() {
+    document.querySelectorAll('.ficha-sucursal-fila').forEach(fila => {
+      fila.addEventListener('click', () => {
+        if (fila.dataset.sucursalId) _seleccionarSucursal(fila.dataset.sucursalId)
+      })
+    })
+
+    const btnGeo = document.getElementById('btn-geo')
+    if (!btnGeo) return
+    btnGeo.addEventListener('click', () => {
+      const msg = document.getElementById('geo-mensaje')
+      if (msg) msg.style.display = 'none'
+
+      if (!navigator.geolocation) {
+        _mostrarMensajeGeo('No pudimos obtener tu ubicación, elige manualmente arriba.')
+        return
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords
+          const conCoords = sucursalesConCoords.filter(s => s.lat != null && s.lng != null)
+          if (!conCoords.length) {
+            _mostrarMensajeGeo('No pudimos obtener tu ubicación, elige manualmente arriba.')
+            return
+          }
+          let mejor = conCoords[0]
+          let mejorDist = haversineKm(latitude, longitude, mejor.lat, mejor.lng)
+          for (const s of conCoords.slice(1)) {
+            const d = haversineKm(latitude, longitude, s.lat, s.lng)
+            if (d < mejorDist) { mejor = s; mejorDist = d }
+          }
+          _seleccionarSucursal(mejor.id)
+        },
+        () => {
+          _mostrarMensajeGeo('No pudimos obtener tu ubicación, elige manualmente arriba.')
+        },
+        { timeout: 8000 }
+      )
+    })
+  }
+  initFichaSucursales()
 
   async function cargar() {
     const params = new URLSearchParams(location.search)
@@ -984,6 +1133,7 @@
       // con el WhatsApp de respaldo.
       if (resSuc.ok) aplicarSucursales(await resSuc.json())
       renderProducto(await res.json())
+      _aplicarPreferenciaGuardada()
     } catch {
       mostrarError()
     }
