@@ -1919,6 +1919,32 @@
     initFeaturedCarousel()
   }
 
+  /* ── testimonios curados desde el panel (migración 013) ──
+     Antes era un <blockquote> fijo en el HTML; ahora se arma desde
+     /publico/testimonios, en el orden que decidió la familia. Con un
+     solo testimonio activo se ve igual que el bloque fijo de antes
+     (initCarousel oculta las flechas solo si no hay overflow). */
+  function renderTestimonios(testimonios) {
+    const section = document.getElementById('testimonios')
+    const grid = document.getElementById('testimonios-grid')
+
+    if (testimonios.length === 0) {
+      section.style.display = 'none'
+      return
+    }
+    section.style.display = ''
+
+    grid.innerHTML = testimonios.map(t => `
+      <div class="testimonio-slide">
+        <blockquote class="testimonial-quote">"${esc(t.texto)}"</blockquote>
+        <p class="testimonial-author">— ${esc(t.autor)}${t.ciudad ? `, ${esc(t.ciudad)}` : ''}</p>
+      </div>`
+    ).join('')
+
+    animarEntrada(grid.children)
+    initTestimoniosCarousel()
+  }
+
   /* ── flechas de carrusel horizontal con scroll-snap ──
      Genérico: lo usan tanto Destacados (productos) como Testimonios
      (texto) — mismo comportamiento, distintos ids. Scroll nativo con
@@ -2015,10 +2041,11 @@
     grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--accent1);padding:3rem 0;font-size:.85rem;letter-spacing:.06em;">Cargando colección…</p>'
 
     try {
-      const [resCats, resProds, resSuc] = await Promise.all([
+      const [resCats, resProds, resSuc, resTest] = await Promise.all([
         fetch(`${API_BASE}/publico/categorias`),
         fetch(`${API_BASE}/publico/productos`),
         fetch(`${API_BASE}/publico/sucursales`),
+        fetch(`${API_BASE}/publico/testimonios`),
       ])
       if (!resCats.ok || !resProds.ok) throw new Error()
       const [categorias, productos] = await Promise.all([resCats.json(), resProds.json()])
@@ -2027,9 +2054,11 @@
       _aplicarFiltroInicial()
       renderDestacados()
 
-      // Sucursales es no-crítico: si falla, el catálogo ya cargó y los
-      // botones de WhatsApp simplemente se quedan con el valor de respaldo.
+      // Sucursales y testimonios son no-críticos: si fallan, el catálogo ya
+      // cargó — los botones de WhatsApp se quedan con el valor de respaldo,
+      // y la sección de testimonios simplemente se queda oculta.
       if (resSuc.ok) aplicarSucursales(await resSuc.json())
+      if (resTest.ok) renderTestimonios(await resTest.json())
     } catch {
       grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--accent1);padding:3rem 0;font-size:.85rem;">No se pudo cargar el catálogo. Por favor intenta más tarde.</p>'
     } finally {
@@ -2145,14 +2174,14 @@
 
     document.querySelectorAll(
       '.destacados-header, .about-img, .about-text, .coleccion-header, ' +
-      '.amedida-intro, .showcase-text, .instagram-header, .contacto-info, .contacto-form'
+      '.amedida-intro, .showcase-text, .instagram-header, #testimonios .section-label, ' +
+      '.contacto-info, .contacto-form'
     ).forEach(el => el.classList.add('reveal'))
 
     // grupos escalonados: cada miembro entra 90ms después del anterior
     const grupos = [
       document.querySelectorAll('.proceso-steps .paso'),
       document.querySelectorAll('.showcase-panel'),
-      document.querySelectorAll('#testimonios .section-label, .testimonial-quote, .testimonial-author'),
     ]
     grupos.forEach(lista => lista.forEach((el, i) => {
       el.classList.add('reveal')
