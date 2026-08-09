@@ -514,9 +514,9 @@
 
     /* ── Filtro "Disponible en CDMX" ──
        Deliberadamente NO es un .tab-btn más: pill redondeado + color de
-       acento distinto (accent1, el mismo de .badge-cdmx) en vez del
-       rectángulo oscuro de los tabs de categoría. Es un filtro que se
-       COMBINA con la categoría activa, no una alternativa a "Todos". */
+       acento distinto (accent1) en vez del rectángulo oscuro de los tabs
+       de categoría. Es un filtro que se COMBINA con la categoría activa,
+       no una alternativa a "Todos". */
     .coleccion-filtro-sucursal {
       display: flex;
       justify-content: center;
@@ -1245,24 +1245,6 @@
       box-shadow: inset 0 0 0 1px rgba(250,248,245,.35);
       pointer-events: none;
     }
-    /* ── ETIQUETA "También en CDMX" (migración 011) ──
-       Esquina opuesta al badge de descuento para que nunca choquen. */
-    .badge-cdmx {
-      position: absolute;
-      top: .75rem;
-      right: .75rem;
-      z-index: 2;
-      background: var(--accent1);
-      color: var(--white);
-      font-family: var(--sans);
-      font-size: .62rem;
-      font-weight: 400;
-      letter-spacing: .12em;
-      line-height: 1;
-      padding: .4rem .6rem .36rem;
-      box-shadow: inset 0 0 0 1px rgba(250,248,245,.35);
-      pointer-events: none;
-    }
     .catalog-card-img, .featured-card-img { position: relative; }
 
     /* placeholder cuando el producto no tiene foto */
@@ -1766,16 +1748,6 @@
       : ''
   }
 
-  function badgeCdmx(p) {
-    // "SUCURSAL CDMX" en vez de "TAMBIÉN EN CDMX": con el espacio limitado
-    // de una card no cabe explicar que el precio varía, pero al menos debe
-    // quedar inequívoco que es OTRA SUCURSAL (ubicación de venta distinta),
-    // no otra opción/variante del mismo mueble.
-    return p.disponible_cdmx
-      ? `<span class="badge-cdmx">SUCURSAL CDMX</span>`
-      : ''
-  }
-
   /* ── tabs de categorías (renderizadas desde la API) ── */
   function renderTabs(categorias) {
     const container = document.getElementById('coleccion-tabs')
@@ -1823,7 +1795,7 @@
     const sub = [p.categoria, p.material, p.color].filter(Boolean).map(esc).join(' · ')
     return `
       <a class="catalog-card" href="producto.html?id=${p.id}">
-        <div class="catalog-card-img">${badgeDescuento(p)}${badgeCdmx(p)}${img}</div>
+        <div class="catalog-card-img">${badgeDescuento(p)}${img}</div>
         <h3>${esc(p.nombre)}</h3>
         ${sub ? `<p class="card-sub">${sub}</p>` : ''}
         <span class="ver-mas">Ver detalles →</span>
@@ -1930,7 +1902,7 @@
         : `<div class="foto-placeholder" aria-hidden="true"></div>`
       return `
         <a class="featured-card" href="producto.html?id=${p.id}">
-          <div class="featured-card-img">${badgeDescuento(p)}${badgeCdmx(p)}${img}</div>
+          <div class="featured-card-img">${badgeDescuento(p)}${img}</div>
           <div class="featured-card-info">
             <h3>${esc(p.nombre)}</h3>
             <span>Ver detalles →</span>
@@ -2124,8 +2096,8 @@
     // NUNCA comparar por nombre: es editable desde el panel (Sucursales.jsx)
     // y dejaría de funcionar en silencio en cuanto alguien lo renombre.
     // Alimenta la burbuja flotante, el botón del footer y el CTA genérico
-    // de "Escríbenos ahora" — los CTAs específicos de CDMX (badge de
-    // catálogo, producto.html) usan su propio número, no este.
+    // de "Escríbenos ahora" — el CTA específico de CDMX (producto.html)
+    // usa su propio número, no este.
     const principal = sucursales.find(s => s.es_principal) || sucursales[0]
     if (principal?.whatsapp) {
       waPrincipal = principal.whatsapp
