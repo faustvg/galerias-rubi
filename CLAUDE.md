@@ -2,37 +2,54 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Actualizado:** 2026-08-09, tras la regla de "ocultar precio para productos
+disponibles en CDMX" y la remoción de la etiqueta "SUCURSAL CDMX" del
+catálogo. Si trabajaste en este repo antes de esa fecha, revisa las
+secciones marcadas ⚠️ — cambiaron.
+
 ## Project overview
 
-**Muebles Rubí** is a static landing page for a Mexican furniture craftsman, served via GitHub Pages. A PostgreSQL database (local dev on Windows, production on a Hetzner VPS running Ubuntu 24.04) stores the product catalog and order records. The static site fetches the catalog live from the FastAPI backend (`GET /publico/productos`, `/publico/categorias`) — there is no static JSON bridge file.
+**Muebles Rubí** es un negocio familiar de muebles (San Pedro Tultepec,
+Estado de México) con presencia digital: un sitio público estático
+(`web-publico/`) y un panel de administración React (`admin/`), ambos
+respaldados por una API FastAPI (`api/`) y PostgreSQL (dev local en Windows,
+producción en un VPS de Hetzner con Ubuntu 24.04). Desde 2026 el negocio
+opera **dos sucursales legalmente distintas**: San Pedro Tultepec (Muebles
+Rubí, entidad principal) y Ciudad de México (Muebles Local No.17) — mismo
+catálogo compartido en su mayoría, con un subconjunto de productos también
+disponible en CDMX a precio propio.
 
-An `admin/` React (Vite) frontend already exists and is in active use (not just a future placeholder) — CRUD for notas, productos, categorías, proveedores, usuarios, plus a Recharts dashboard.
+El sitio público obtiene el catálogo en vivo desde el backend (`GET
+/publico/productos`, `/publico/categorias`, `/publico/sucursales`,
+`/publico/testimonios`) — no hay archivo JSON intermedio ni paso de
+publicación manual.
+
+`admin/` es un panel React (Vite) completo y en uso activo — no es un
+placeholder futuro. CRUD de notas, productos, categorías, proveedores,
+usuarios, sucursales, testimonios, más un dashboard con Recharts.
 
 ## Commands
 
 ### Python environment (run from `api/`)
 
 ```bash
-# Activate virtual environment (Windows)
-venv\Scripts\activate
-
-# Install dependencies
+venv\Scripts\activate          # Windows, entorno local
 pip install -r api/requirements.txt
-
-# Run the API
 uvicorn api.main:app --reload
 ```
 
 ### Database (psql)
 
 ```bash
-# Load the schema (run once to initialize)
-psql -U <user> -d <dbname> -f db/schema.sql
+psql -U <user> -d <dbname> -f db/schema.sql    # inicializar una base nueva desde cero
 ```
+
+Para bases existentes, aplicar migraciones individuales de `db/migrations/`
+en orden (001–014) — nunca reaplicar `schema.sql` sobre una base con datos.
 
 ### Environment variables
 
-Create `api/.env` (never commit it):
+Crear `api/.env` (nunca commitear):
 
 ```
 DB_HOST=
@@ -40,15 +57,15 @@ DB_PORT=
 DB_NAME=
 DB_USER=
 DB_PASSWORD=
-SECRET_KEY=        # generate with: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=        # generar con: python -c "import secrets; print(secrets.token_hex(32))"
 
-# Optional — enables the "send nota by email" button in the admin panel.
-# SMTP_USER/SMTP_PASSWORD are for a Gmail account (mueblesrubimx@gmail.com).
-# SMTP_PASSWORD must be a 16-char Gmail "App Password" (Google Account →
-# Security → 2-Step Verification → App Passwords), NOT the account's login
-# password — Gmail's SMTP rejects plain login passwords.
-# Port 587 + STARTTLS, not 465 + implicit TLS: several VPS providers
-# (including Hetzner) block outbound port 465 by default (anti-spam).
+# Opcional — habilita el botón "enviar nota por email" en el panel admin.
+# SMTP_USER/SMTP_PASSWORD son de una cuenta Gmail (mueblesrubimx@gmail.com).
+# SMTP_PASSWORD debe ser un "App Password" de 16 caracteres (Google Account →
+# Security → 2-Step Verification → App Passwords), NO la contraseña normal
+# de la cuenta — Gmail rechaza contraseñas de login normales por SMTP.
+# Puerto 587 + STARTTLS, no 465 + TLS implícito: varios proveedores de VPS
+# (incluido Hetzner) bloquean el puerto 465 saliente por defecto (anti-spam).
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=
@@ -60,32 +77,23 @@ NOTA_EMAIL_DESTINO=mueblesrubimx@gmail.com
 
 ```bash
 python api/crear_usuario.py
-# prompts for username, full name, role, and password (hidden input)
+# pide username, nombre completo, rol y password (input oculto)
 # roles: superadmin / admin / viewer / worker
 ```
 
-## ⚠️ Before public deploy (VPS with real domain)
-
-Two changes **must** be made in `api/main.py` before going to production:
+## ⚠️ Antes de un deploy público (ya aplicado en producción, dejar como referencia)
 
 ```python
-# 1. SessionMiddleware — enable the Secure flag so the cookie only travels over HTTPS
-app.add_middleware(
-    SessionMiddleware,
-    ...
-    https_only=True,   # ← change False → True
-)
+# SessionMiddleware
+https_only=True,
 
-# 2. CORSMiddleware — lock to your actual domain; never ship allow_origins=["*"] with credentials
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://tu-dominio.com"],   # ← replace wildcard with real domain
-    allow_credentials=True,
-    ...
-)
+# CORSMiddleware
+allow_origins=["https://mueblesrubimx.com"],
 ```
 
-Shipping with `https_only=False` means the session cookie can be sent over plain HTTP and intercepted. Shipping with `allow_origins=["*"]` means any website can make credentialed requests to your admin API.
+Publicar con `https_only=False` deja la cookie de sesión viajar sin cifrar
+por HTTP. Publicar con `allow_origins=["*"]` deja que cualquier sitio haga
+requests con credenciales contra la API de admin.
 
 ---
 
@@ -94,20 +102,27 @@ Shipping with `https_only=False` means the session cookie can be sent over plain
 ### Data flow
 
 ```
-PostgreSQL DB  →  FastAPI (GET /publico/productos, /publico/categorias)  →  index.html / producto.html (live fetch)
+PostgreSQL DB  →  FastAPI (GET /publico/productos, /publico/categorias, ...)  →  index.html / producto.html (fetch en vivo)
+                                                                              →  admin/ (React, autenticado)
 ```
 
-The static site fetches the catalog live from the API on page load — there is no static JSON bridge file or manual publish step. The GitHub Actions workflow (`.github/workflows/deploy-pages.yml`) deploys `web-publico/` to GitHub Pages automatically on every push to `main` that touches that folder; the API itself is deployed separately to the VPS.
+El sitio estático obtiene el catálogo en vivo desde la API al cargar la
+página — no hay archivo JSON intermedio ni paso de publicación manual. El
+workflow de GitHub Actions (`.github/workflows/deploy-pages.yml`) despliega
+`web-publico/` a GitHub Pages automáticamente en cada push a `main` que
+toque esa carpeta — **verificado** (el archivo existe en el repo desde el
+commit `fad00ad`, 2026-06-19). `api/` y `admin/` se despliegan aparte, a
+mano, vía SSH al VPS (no hay pipeline automático para esos dos).
 
 ### Folder layout
 
 ```
 galerias-rubi/
-├── web-publico/     ← static site → GitHub Pages
-├── api/             ← FastAPI backend → VPS
-├── admin/           ← React (Vite) admin panel → VPS
-├── db/              ← schema.sql (source of truth)
-├── docs/            ← diagrams and internal docs
+├── web-publico/     ← sitio estático, sin build step → GitHub Pages (deploy automático)
+├── api/             ← FastAPI backend → VPS (deploy manual)
+├── admin/           ← React (Vite) admin panel → VPS (deploy manual, build local)
+├── db/              ← schema.sql (snapshot) + migrations/ (histórico, fuente de verdad real)
+├── docs/            ← diagramas y notas internas
 ├── .github/
 │   └── workflows/
 │       └── deploy-pages.yml
@@ -116,85 +131,192 @@ galerias-rubi/
 └── README.md
 ```
 
-### Database schema (`schema.sql`)
+### Database schema
 
-Five tables in dependency order:
+`schema.sql` es un snapshot completo; `db/migrations/` es la fuente de
+verdad histórica cuando difieran. Migraciones aplicadas hasta la fecha:
+001–014.
 
-| Table | Purpose |
+Tablas principales:
+
+| Tabla | Propósito |
 |---|---|
-| `categorias` | Product categories; `descuento_pct` applies to all products in the category |
-| `proveedores` | Supplier names, linked per product |
-| `productos` | Master catalog. `fotos TEXT[]` stores URL/path array (first = main image). `visible_en_sitio` gates what the public API exposes. Product-level `descuento_pct` overrides category-level; `NULL` means inherit. |
-| `notas` | Order header (quote/order/delivered). Client data is **denormalized** here (`nombre_cliente`, `telefono`) — no separate clients table. `folio` is a text primary key (paper receipt number, e.g. `'0986'`). `resta` is a generated column (`total - anticipo`). |
-| `partidas` | Order line items (many-to-many bridge between `notas` and `productos`). `importe` is generated (`cantidad * precio_unitario`). `producto_id` is nullable to allow one-off items not in the catalog. Cascades delete from `notas`. |
+| `categorias` | Categorías; `descuento_pct` aplica a todos sus productos |
+| `proveedores` | Proveedores, ligados por producto |
+| `productos` | Catálogo maestro. `fotos TEXT[]` (primera = imagen principal). `visible_en_sitio` filtra la API pública. `descuento_pct` a nivel producto pisa al de categoría; `NULL` = hereda. `ubicaciones TEXT[]` es bodega/logística interna, derivado por trigger — NO confundir con sucursal |
+| `usuarios` | Login del panel; también hace de "vendedores" (`rol`: superadmin/admin/viewer/worker). `sucursal_id` = asignación ACTUAL, editable, no histórica |
+| `sucursales` | 2 filas: San Pedro Tultepec (`es_principal=true`) y Ciudad de México (`es_principal=false`). Columnas: `direccion`, `maps_url`, `whatsapp`, `ocultar_precio_publico`, `activo`, `lat`/`lng` (nullable, migración 014) |
+| `producto_sucursal` | Solo tiene fila cuando un producto TAMBIÉN se vende en CDMX — `producto_id, sucursal_id, precio`. San Pedro usa `productos.precio_base` directo, sin fila aquí |
+| `bodegas` | Catálogo de ubicaciones físicas de inventario, cada una ligada a una `sucursal_id`. NO es lo mismo que `sucursales` — bodega es logística interna, sucursal es entidad de venta |
+| `notas` | Pedido/cotización. Datos de cliente **desnormalizados** (`nombre_cliente`, `telefono`) — no hay tabla de clientes separada. `folio` es texto (PK, ticket de papel, ej. `'0986'`). `resta` es columna generada (`total - anticipo`). `sucursal_id` se congela al crear la nota (copiado del vendedor en ese momento) — NO se recalcula si el vendedor cambia de sucursal después |
+| `partidas` | Líneas de una nota (bridge many-to-many `notas`↔`productos`). `importe` es generado (`cantidad * precio_unitario`). `producto_id` nullable para ítems sueltos fuera de catálogo. Cascada de borrado desde `notas` |
+| `pagos` | Abonos contra una nota |
+| `movimientos_inventario` | Historial de entradas de stock; trigger `trg_recalcular_existencias` deriva `productos.existencias`/`fecha_ingreso`/`ubicaciones`. `bodega_id` es columna aditiva en paralelo, no reemplaza `ubicacion` (texto libre) |
+| `testimonios` | Curados a mano desde el panel (`Testimonios.jsx`) — `texto, autor, ciudad, activo, orden` |
 
-> **Note:** `relational_diagramm.md` shows an older draft with a separate `CLIENTES` table. The authoritative schema is `schema.sql`. The table list above is not exhaustive — `schema.sql` also has `usuarios`, `pagos`, and `movimientos_inventario` (with a trigger that derives `productos.existencias`/`fecha_ingreso`/`ubicaciones`). Treat `schema.sql` + `db/migrations/` as the source of truth over this doc for schema details.
+**Importante — "sucursal" ≠ "ubicación"/bodega.** Son conceptos
+deliberadamente separados; `sucursal_id` nunca debe confundirse con
+`ubicacion`/`bodega_id`.
+
+### ⚠️ Regla de precio para productos disponibles en CDMX (decisión de los dueños, agosto 2026)
+
+Para cualquier producto con `disponible_cdmx = true`: **no se muestra ningún
+precio públicamente, ni el de San Pedro tampoco.** Implementado en
+`_fila_a_producto()` en `routers/publico.py` — si `disponible_cdmx`, los
+campos `precio_efectivo`, `precio_base`, `precio_cdmx` regresan `null` y
+`descuento_pct` se fuerza a `0`, sin importar el valor de
+`sucursales.ocultar_precio_publico`. Esta regla es adicional al toggle
+existente, no lo reemplaza. En `producto.html`, ambas filas de la "ficha de
+sucursales" muestran un CTA de WhatsApp ("Contáctanos para el precio") en
+vez de un número. Los productos solo-San-Pedro no se ven afectados.
+
+Esta lógica vive **solo** en `routers/publico.py` — confirmado que no
+contamina los endpoints del panel admin (`GET /productos` en `main.py` y
+`GET /admin/productos` en `catalogo.py` usan serializadores distintos, sin
+relación con `_fila_a_producto()`).
+
+Ya NO se muestra ninguna etiqueta "SUCURSAL CDMX"/"TAMBIÉN EN CDMX" en las
+tarjetas del catálogo o destacados de `index.html` — se removió (2026-08-09)
+para no llamar la atención sobre la distinción de sucursal fuera de la
+ficha del producto. `badgeCdmx()` y la clase CSS `.badge-cdmx` ya no
+existen en `index.html`.
 
 ### API layout
 
 ```
 api/
-├── main.py              ← app, middleware, auth endpoints, internal catalog GETs used by admin/
+├── main.py              ← app, middleware, auth, + GET /api/categorias|/api/proveedores|/api/productos|/api/productos/{id}
+│                            (sin auth, usados por admin/ para dropdowns — NO por el sitio público,
+│                            que usa routers/publico.py. No son código muerto, no los borres.)
 ├── database.py          ← pool + get_db dependency
 ├── auth.py              ← pwd_context, UsuarioActual, get_usuario_actual, requiere_roles
 ├── routers/
-│   ├── catalogo.py      ← catalog write endpoints (POST/PUT/DELETE) + inventory movements
-│   ├── dashboard.py     ← reporting/KPI endpoints for admin/
-│   ├── fotos.py         ← photo upload endpoints
-│   ├── notas.py         ← notas (orders/quotes) + pagos
-│   ├── publico.py       ← unauthenticated GETs consumed by web-publico/ (hides costo/existencias)
-│   └── usuarios.py      ← usuarios/vendedores CRUD (superadmin only, except /usuarios/vendedores)
-└── crear_usuario.py     ← standalone CLI script to bootstrap the first admin user (not an HTTP route)
+│   ├── catalogo.py      ← productos CRUD (incl. disponible_cdmx/precio_cdmx → upsert en producto_sucursal) + movimientos de inventario
+│   ├── dashboard.py     ← reporting/KPIs, incluye desglose "por_sucursal" (visible a todos los roles, no oculto como "por vendedor")
+│   ├── fotos.py         ← endpoints de subida de fotos
+│   ├── notas.py         ← notas (pedidos/cotizaciones) + pagos. ⚠️ query compartida _SQL_DETALLE con índices posicionales hardcodeados, ver Pendientes
+│   ├── publico.py       ← GETs sin auth para web-publico/: productos, categorías, sucursales, testimonios (oculta costo/existencias)
+│   ├── sucursales.py    ← GET/PUT (sin POST/DELETE — 2 sucursales fijas, sembradas por migración)
+│   ├── testimonios.py   ← CRUD completo, admin/superadmin
+│   └── usuarios.py      ← CRUD usuarios/vendedores (superadmin only, excepto /usuarios/vendedores)
+└── crear_usuario.py     ← script CLI standalone para el primer admin (no es una ruta HTTP)
 ```
-
-Note: `main.py` still defines its own `GET /categorias`, `/proveedores`, `/productos`, `/productos/{id}` — these are unauthenticated but are used internally by `admin/` for dropdown/picker data, not by the public site (which uses `routers/publico.py` instead). Don't assume they're dead code.
 
 ### Authentication
 
-Session-based auth with HttpOnly cookies. No JWT.
+Sesión por cookie firmada con HttpOnly. Sin JWT.
 
-| Concern | Decision |
+| Concern | Decisión |
 |---|---|
-| Password hashing | `passlib[bcrypt]`, pinned `bcrypt<4.0` (passlib incompatible with bcrypt 4.x) |
-| Session storage | Signed cookie via `itsdangerous` (HMAC-SHA256), 8h max age |
-| Cookie flags | `HttpOnly` (JS can't read) + `SameSite=Lax` (blocks cross-site POST/PUT/DELETE) |
-| CSRF | SameSite=Lax + locked CORS domain is sufficient; no CSRF tokens needed |
-| Timing attacks | `dummy_verify()` when username not found — same response time as valid user |
-| Username enumeration | Same `401` for wrong username and wrong password |
+| Password hashing | `passlib[bcrypt]`, fijado `bcrypt<4.0` (passlib incompatible con bcrypt 4.x) |
+| Session storage | Cookie firmada vía `itsdangerous` (HMAC-SHA256), 8h max age |
+| Cookie flags | `HttpOnly` (JS no puede leerla) + `SameSite=Lax` (bloquea POST/PUT/DELETE cross-site) |
+| CSRF | SameSite=Lax + CORS bloqueado a un dominio es suficiente; sin tokens CSRF explícitos |
+| Timing attacks | `dummy_verify()` cuando el username no existe — mismo tiempo de respuesta que un usuario válido |
+| Username enumeration | Mismo `401` para username incorrecto que para password incorrecto |
 
 **Flow:**
-1. `POST /login` — verifies bcrypt hash, checks `activo=true`, writes `user_id` into signed cookie.
-2. Protected routes use `Depends(get_usuario_actual)` — reads cookie, queries DB, returns `UsuarioActual` or raises 401.
-3. `Depends(requiere_roles("superadmin", "admin"))` — layered on top of `get_usuario_actual`, raises 403 if role not in list.
-4. `POST /logout` — clears session.
+1. `POST /login` — verifica hash bcrypt, checa `activo=true`, escribe `user_id` en la cookie firmada.
+2. Rutas protegidas usan `Depends(get_usuario_actual)` — lee la cookie, consulta la DB, regresa `UsuarioActual` o lanza 401.
+3. `Depends(requiere_roles("superadmin", "admin"))` — se apila sobre `get_usuario_actual`, lanza 403 si el rol no está en la lista.
+4. `POST /logout` — limpia la sesión.
 
 ### Catalog write endpoints (`api/routers/catalogo.py`)
 
-All write endpoints require roles `superadmin`, `admin`, or `worker`. Viewers cannot write.
+Todos los endpoints de escritura requieren rol `superadmin`, `admin` o
+`worker`. Los `viewer` no pueden escribir.
 
-| Method | Path | Action |
+| Method | Path | Acción |
 |---|---|---|
-| POST | `/categorias` | Create category |
-| PUT | `/categorias/{id}` | Partial update (only sent fields) |
-| POST | `/proveedores` | Create supplier |
-| PUT | `/proveedores/{id}` | Partial update |
-| POST | `/productos` | Create product |
-| PUT | `/productos/{id}` | Partial update (stock, visibility, price, etc.) |
-| DELETE | `/productos/{id}` | Soft-delete: sets `visible_en_sitio=false`, row preserved for order history |
+| POST | `/categorias` | Crear categoría |
+| PUT | `/categorias/{id}` | Actualización parcial (solo campos enviados) |
+| POST | `/proveedores` | Crear proveedor |
+| PUT | `/proveedores/{id}` | Actualización parcial |
+| POST | `/productos` | Crear producto |
+| PUT | `/productos/{id}` | Actualización parcial (stock, visibilidad, precio, etc.) |
+| DELETE | `/productos/{id}` | Soft-delete: pone `visible_en_sitio=false`, la fila se conserva por el historial de notas |
 
-### Frontend (`index.html`)
+### Frontend (`web-publico/`)
 
-Single self-contained file — all CSS and JS are inline, no build step, no framework.
+Dos archivos autocontenidos, sin build step: `index.html` y `producto.html`.
+CSS y JS inline en cada uno — al editar algo compartido entre ambos (header,
+footer, WhatsApp), recuerda tocar los dos archivos, no hay plantilla
+compartida.
 
-- **Catalog data** is fetched live from `GET /publico/productos` / `/publico/categorias` on page load (see `API_BASE` near the bottom of `index.html`/`producto.html`) — it is not hardcoded or read from a static JSON file.
-- **WhatsApp number**: loaded dynamically from `GET /publico/sucursales` on page load (`aplicarSucursales()` in both `index.html` and `producto.html`) — no longer a single hardcoded constant. `waPrincipal` (the branch with `es_principal=true`) feeds the floating bubble, footer CTA, and generic contact CTAs; the literal `wa.me/...` hrefs still baked into the HTML are only a fallback used if the API call fails.
-- **Multi-branch (migración 011)**: `sucursales` table has exactly 2 rows (San Pedro = `es_principal=true`, CDMX = `es_principal=false`). Both backend and frontend identify "the other branch" via `es_principal`, never by matching `nombre` (which is editable from `Sucursales.jsx`). This assumes exactly 2 branches — see the comment block at the top of `db/migrations/011_sucursales.sql` for what a third branch would require.
-- **Sections:** `#inicio` (hero) → `#destacados` → `#nosotros` → `#coleccion` (filterable grid) → `#amedida` (process steps) → `#testimonios` → `#contacto` (form + info).
-- Form submission (`handleFormSubmit`) and card clicks (`openWhatsApp`) both open a pre-filled WhatsApp URL — there is no backend form handler.
+- **Catálogo**: fetch en vivo desde `GET /publico/productos` /
+  `/publico/categorias` (ver `API_BASE` cerca del final de cada archivo),
+  con paginación incremental ("Ver más piezas", 8 a la vez) y tabs de
+  categoría vía `?categoria=ID` (replaceState).
+- **Filtro CDMX**: pill adicional "Ver solo CDMX" en Colección, combinable
+  (AND) con el filtro de categoría vía `?sucursal=cdmx`, mismo patrón de URL
+  que categoría.
+- **Destacados**: carrusel horizontal (scroll-snap), no grid — flechas solo
+  en desktop.
+- **WhatsApp**: número cargado dinámicamente desde `GET /publico/sucursales`
+  al cargar la página (`aplicarSucursales()` en ambos archivos) — ya no es
+  una constante fija. `waPrincipal` (la sucursal con `es_principal=true`)
+  alimenta la burbuja flotante, el botón del footer y los CTAs genéricos; los
+  hrefs `wa.me/...` ya escritos en el HTML son solo respaldo si falla el
+  fetch.
+- **Multi-sucursal (migración 011)**: la tabla `sucursales` tiene
+  exactamente 2 filas (San Pedro = `es_principal=true`, CDMX =
+  `es_principal=false`). Backend y frontend identifican "la otra sucursal"
+  siempre vía `es_principal`, nunca comparando `nombre` (editable desde
+  `Sucursales.jsx`). Esto asume exactamente 2 sucursales — ver el comentario
+  al inicio de `db/migrations/011_sucursales.sql` para lo que implicaría una
+  tercera.
+- **Ficha de sucursales** (`producto.html`): reemplaza el precio simple
+  cuando `disponible_cdmx=true`. Formato de lista con pin + nombre +
+  precio-o-CTA (ver regla de precio arriba). Incluye botón opcional "Usar mi
+  ubicación" (geolocalización — solo dispara al hacer clic, nunca
+  automático; calcula distancia Haversine contra `sucursales.lat/lng`;
+  recuerda la elección en `localStorage` bajo `mr_sucursal_preferida`; falla
+  en silencio si se rechaza el permiso).
+- **Instagram**: widget de Elfsight embebido (script + div), reemplazó el
+  placeholder "Próximamente".
+- **Testimonios**: carrusel dinámico desde `/publico/testimonios`, oculta la
+  sección completa si no hay ninguno activo, flechas solo con 2+.
+- **Secciones:** `#inicio` (hero) → `#destacados` → `#nosotros` →
+  `#coleccion` (grid filtrable) → `#amedida` (pasos del proceso) →
+  `#instagram` → `#testimonios` → `#contacto` (form + info).
+- **Motion**: sistema de scroll-reveal (IntersectionObserver), respeta
+  `prefers-reduced-motion` en todo el sitio.
+- El envío del formulario de contacto y los clics en las tarjetas abren una
+  URL de WhatsApp pre-llenada — no hay handler de backend para el form.
+- **Gotcha de assets**: `logo.png` es el archivo correcto y limpio.
+  `logo_transparente.png` (en `assets/`, ya no referenciado en ningún HTML)
+  tiene un defecto real — nunca volver a usarlo ni enlazarlo.
 
 ## Pendientes técnicos
 
-Identificados durante la implementación de multi-sucursal (migración 011), deliberadamente dejados fuera de esa entrega para no mezclar una feature con un refactor de convención de todo el backend:
+Identificados durante la implementación de multi-sucursal (migración 011),
+deliberadamente dejados fuera de esa entrega para no mezclar una feature con
+un refactor de convención de todo el backend:
 
-1. **Migrar de indexado posicional (`row[0]`, `row[13]`...) a acceso por nombre de columna** en los routers de `api/`. El patrón actual rompió en silencio cuando se insertó `sucursal_id` a la mitad de `_SQL_DETALLE` en `notas.py` — todas las columnas posteriores se recorrieron un índice, y `_verificar_acceso()` habría comparado el campo equivocado sin lanzar ningún error visible. Empezar por `notas.py` (mayor riesgo: una sola query compartida por 3 endpoints con índices hardcodeados en cada uno) usando `row_factory=dict_row` de psycopg3 — no requiere librerías nuevas, es un cambio de una línea por cursor. Extender al resto de `catalogo.py`, `publico.py`, `usuarios.py`, `dashboard.py` después, archivo por archivo, verificando cada endpoint contra `/docs` antes de seguir con el siguiente.
-2. **Agregar `Depends(get_usuario_actual)` a los 4 endpoints sin autenticación en `api/main.py`**: `GET /api/productos`, `/api/productos/{id}`, `/api/categorias`, `/api/proveedores`. Hoy solo dependen de `Depends(database.get_db)` — son alcanzables sin sesión ni login, aunque el consumidor real es el panel admin (`Categorias.jsx`, `Proveedores.jsx`, `ProductoModal.jsx`, `NotaFormulario.jsx`). No exponen `costo`/`existencias`/`disponible_cdmx`/`precio_cdmx` (usan un modelo `Producto` más viejo que nunca hace join a `producto_sucursal`), así que no hay fuga de precio de sucursal — pero siguen siendo superficie pública innecesaria que debería vivir detrás de sesión igual que el resto de `/api`.
+1. **Migrar de indexado posicional (`row[0]`, `row[13]`...) a acceso por
+   nombre de columna** en los routers de `api/`. El patrón actual rompió en
+   silencio cuando se insertó `sucursal_id` a la mitad de `_SQL_DETALLE` en
+   `notas.py` — todas las columnas posteriores se recorrieron un índice, y
+   `_verificar_acceso()` habría comparado el campo equivocado sin lanzar
+   ningún error visible. Empezar por `notas.py` (mayor riesgo: una sola
+   query compartida por 3 endpoints con índices hardcodeados en cada uno)
+   usando `row_factory=dict_row` de psycopg3 — no requiere librerías nuevas,
+   es un cambio de una línea por cursor. Extender al resto de `catalogo.py`,
+   `publico.py`, `usuarios.py`, `dashboard.py` después, archivo por archivo,
+   verificando cada endpoint contra `/docs` antes de seguir con el
+   siguiente.
+2. **Agregar `Depends(get_usuario_actual)` a los 4 endpoints sin
+   autenticación en `api/main.py`**: `GET /api/productos`,
+   `/api/productos/{id}`, `/api/categorias`, `/api/proveedores`. Hoy solo
+   dependen de `Depends(database.get_db)` — son alcanzables sin sesión ni
+   login, aunque el consumidor real es el panel admin (`Categorias.jsx`,
+   `Proveedores.jsx`, `ProductoModal.jsx`, `NotaFormulario.jsx`). No exponen
+   `costo`/`existencias`/`disponible_cdmx`/`precio_cdmx` (usan un modelo
+   `Producto` más viejo que nunca hace join a `producto_sucursal`), así que
+   no hay fuga de precio de sucursal — pero siguen siendo superficie pública
+   innecesaria que debería vivir detrás de sesión igual que el resto de
+   `/api`.
+3. Si se agrega una tercera sucursal algún día: refactorizar el patrón
+   `es_principal` (asume exactamente 2) a un modelo genérico de N
+   sucursales — afecta `publico.py`, el JS de `web-publico/`, y
+   probablemente el diseño de la "ficha de sucursales".
