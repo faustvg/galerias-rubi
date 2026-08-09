@@ -765,6 +765,19 @@
     }).format(valor)
   }
 
+  // CTA "Contáctanos para el precio" — usado en la ficha de sucursales para
+  // CUALQUIER fila (San Pedro o CDMX) cuando el precio no se muestra.
+  // Mismo peso visual que un precio real, nunca una nota al pie en gris.
+  // Sin número de WhatsApp disponible (p.ej. /publico/sucursales falló):
+  // nunca generar wa.me/null — se deja como texto plano, sin link.
+  function ctaContactoPrecio(nombreProd, numeroWa, sucursalNombre) {
+    if (!numeroWa) return 'Contáctanos para el precio'
+    const msg = encodeURIComponent(
+      `Hola, me interesa el mueble: *${nombreProd}* en la sucursal ${sucursalNombre}. ¿Cuál es el precio y la disponibilidad?`
+    )
+    return `<a href="https://wa.me/${numeroWa}?text=${msg}" target="_blank" rel="noopener">Contáctanos para el precio</a>`
+  }
+
   let fotosActuales = []
   let indiceActivo  = 0
   let nombreProducto = ''
@@ -882,11 +895,23 @@
     // Nombre
     document.getElementById('prod-nombre').textContent = p.nombre
 
-    // Ficha de sucursales — San Pedro siempre aparece con "Precio: $X,XXX"
-    // (con oferta: precio de lista tachado + precio final + chip %). Solo
-    // valores numéricos formateados van al innerHTML, nada del usuario.
-    const conDescuento = p.descuento_pct > 0 && p.precio_base > p.precio_efectivo
-    if (p.precio_efectivo > 0) {
+    // Ficha de sucursales — San Pedro siempre aparece.
+    // Regla de negocio (decisión de los padres): si el producto también se
+    // vende en CDMX, NINGÚN precio se muestra públicamente — tampoco el de
+    // San Pedro — sin importar precio_efectivo. Ambas filas se vuelven CTA
+    // de WhatsApp con la MISMA jerarquía visual, nunca solo San Pedro con
+    // precio y CDMX sin él (ver bloque de fila-cdmx más abajo).
+    // Producto solo de San Pedro (comportamiento anterior, sin cambios):
+    // "Precio: $X,XXX" (con oferta: precio de lista tachado + precio final
+    // + chip %). Solo valores numéricos formateados van al innerHTML, nada
+    // del usuario.
+    const conDescuento = !p.disponible_cdmx && p.descuento_pct > 0 && p.precio_base > p.precio_efectivo
+    if (p.disponible_cdmx) {
+      document.getElementById('fila-sanpedro-precio').innerHTML =
+        ctaContactoPrecio(p.nombre, waPrincipal, nombrePrincipal)
+      document.getElementById('fila-sanpedro-nombre').textContent = nombrePrincipal
+      document.getElementById('ficha-sucursales').style.display = ''
+    } else if (p.precio_efectivo > 0) {
       const valor = conDescuento
         ? `<span class="precio-original">${formatPrecio(p.precio_base)}</span>` +
           `<span>${formatPrecio(p.precio_efectivo)}</span>` +
@@ -925,9 +950,10 @@
 
     // Fila de CDMX en la ficha: si el producto NO está disponible en CDMX,
     // fila-cdmx se queda oculta y la ficha se ve solo con San Pedro. Si SÍ
-    // está disponible, ambas filas quedan con la MISMA jerarquía visual —
-    // objetivo explícito: que sea imposible malinterpretar que el precio
-    // cambia según la sucursal (ficha informativa neutral, no comparación).
+    // está disponible, el backend ya garantiza precio_cdmx=null (regla de
+    // negocio: ningún precio se muestra en ninguna sucursal) — la fila
+    // siempre es un CTA de WhatsApp, con la MISMA jerarquía visual que la
+    // fila de San Pedro (ver bloque de arriba).
     //
     // Intencionalmente específico a "CDMX" — con solo 2 sucursales no vale
     // la pena una lista genérica (mismo criterio que ProductoPublico en el
@@ -936,28 +962,8 @@
     if (p.disponible_cdmx) {
       document.getElementById('fila-cdmx-nombre').textContent = nombreCdmx
       document.getElementById('fila-cdmx').style.display = ''
-
-      const precioEl = document.getElementById('fila-cdmx-precio')
-
-      if (p.precio_cdmx != null) {
-        // ocultar_precio_publico=false para CDMX: mismo tratamiento que el
-        // precio de San Pedro, igual de prominente.
-        precioEl.innerHTML = `<span class="ficha-precio-label">Precio:</span>${formatPrecio(p.precio_cdmx)}`
-      } else {
-        // ocultar_precio_publico=true para CDMX (default): la fila entera
-        // se vuelve un CTA clickeable con el mismo peso visual del precio,
-        // no una nota al pie en gris.
-        const msgCdmx = encodeURIComponent(
-          `Hola, me interesa el mueble: *${p.nombre}* en la sucursal ${nombreCdmx}. ¿Cuál es el precio y la disponibilidad?`
-        )
-        if (waCdmx) {
-          precioEl.innerHTML = `<a href="https://wa.me/${waCdmx}?text=${msgCdmx}" target="_blank" rel="noopener">Consulta precio y disponibilidad</a>`
-        } else {
-          // Sin número de CDMX disponible (p.ej. /publico/sucursales falló):
-          // nunca generar wa.me/null — se deja como texto plano, sin link.
-          precioEl.textContent = 'Consulta precio y disponibilidad'
-        }
-      }
+      document.getElementById('fila-cdmx-precio').innerHTML =
+        ctaContactoPrecio(p.nombre, waCdmx, nombreCdmx)
     }
 
     // Galería

@@ -13,6 +13,11 @@ CAMPOS EXPUESTOS vs. CAMPOS INTERNOS
        precio_base, descuento_pct (efectivo),
        disponible_cdmx, precio_cdmx (None si esa sucursal oculta precio)
 
+  precio_efectivo / precio_base / precio_cdmx / descuento_pct son None (o 0
+  para descuento_pct) cuando disponible_cdmx=true: regla de negocio — un
+  producto también vendido en CDMX no muestra NINGÚN precio públicamente,
+  tampoco el de San Pedro. Ver _fila_a_producto().
+
   descuento_pct expuesto es el EFECTIVO (COALESCE producto → categoría → 0),
   junto con precio_base: el sitio los usa para mostrar la etiqueta de oferta
   y el precio original tachado. Un descuento es información de marketing —
@@ -81,17 +86,21 @@ class ProductoPublico(BaseModel):
     color:            Optional[str]
     material:         Optional[str]
     descripcion:      Optional[str]
-    precio_efectivo:  float   # precio_base con descuento aplicado; costo NUNCA sale
+    # precio_efectivo / precio_base: None cuando disponible_cdmx=true — regla
+    # de negocio (decisión de los padres): si el producto también se vende
+    # en CDMX, NINGÚN precio se muestra públicamente, tampoco el de San
+    # Pedro. Ver _fila_a_producto() más abajo.
+    precio_efectivo:  Optional[float]  # precio_base con descuento aplicado; costo NUNCA sale
     destacados:       bool    # marca manual del panel — filtra "Lo más buscado" en el sitio
-    precio_base:      float   # precio de lista — el sitio lo muestra tachado si hay oferta
-    descuento_pct:    float   # % efectivo (producto → categoría → 0); 0 = sin descuento
+    precio_base:      Optional[float]  # precio de lista — el sitio lo muestra tachado si hay oferta
+    descuento_pct:    float   # % efectivo (producto → categoría → 0); 0 = sin descuento (o si el precio está oculto)
     # disponible_cdmx / precio_cdmx (migración 011): intencionalmente
     # específicos a "CDMX", no un array genérico de sucursales — con solo
     # 2 ubicaciones no vale la pena esa abstracción todavía. Si se agrega
     # una tercera sucursal, este endpoint necesita refactorizarse a una
     # lista genérica de disponibilidad/precio por sucursal.
     disponible_cdmx:  bool             # true si el producto también se vende en CDMX (y esa sucursal está activa)
-    precio_cdmx:      Optional[float]  # precio en CDMX si esa sucursal muestra precio; None = mostrar CTA de WhatsApp en su lugar
+    precio_cdmx:      Optional[float]  # siempre None cuando disponible_cdmx=true (ver arriba); antes dependía solo de ocultar_precio_publico
 
 
 class CategoriaPublica(BaseModel):
@@ -184,6 +193,13 @@ _SQL_BASE = """
 
 
 def _fila_a_producto(r) -> dict:
+    # Regla de negocio (decisión de los padres): si el producto también se
+    # vende en CDMX, NINGÚN precio se muestra públicamente — tampoco el de
+    # San Pedro — sin importar sucursales.ocultar_precio_publico (ese toggle
+    # sigue existiendo pero solo controla precio_cdmx en el caso normal;
+    # esta regla lo pisa por completo cuando disponible_cdmx=true).
+    ocultar_precio_total = r[12] is True
+
     return {
         "id":              r[0],
         "nombre":          r[1],
@@ -193,12 +209,12 @@ def _fila_a_producto(r) -> dict:
         "color":           r[5],
         "material":        r[6],
         "descripcion":     r[7],
-        "precio_efectivo": float(r[8] or 0),
+        "precio_efectivo": None if ocultar_precio_total else float(r[8] or 0),
         "destacados":      r[9],
-        "precio_base":     float(r[10] or 0),
-        "descuento_pct":   float(r[11] or 0),
+        "precio_base":     None if ocultar_precio_total else float(r[10] or 0),
+        "descuento_pct":   0.0 if ocultar_precio_total else float(r[11] or 0),
         "disponible_cdmx": r[12],
-        "precio_cdmx":     float(r[13]) if r[13] is not None else None,
+        "precio_cdmx":     None if ocultar_precio_total else (float(r[13]) if r[13] is not None else None),
     }
 
 
