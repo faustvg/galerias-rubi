@@ -53,7 +53,7 @@ export default function Login() {
 
         {/* Encabezado */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Galerías Rubí</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Muebles Rubí</h1>
           <p className="text-sm text-gray-500 mt-1">Panel de administración</p>
         </div>
 

@@ -132,7 +132,7 @@ export default function Layout({ children }) {
       >
         {/* Marca */}
         <div className="px-5 py-4 border-b border-gray-100 shrink-0">
-          <p className="font-bold text-amber-700 text-lg leading-tight">Galerías Rubí</p>
+          <p className="font-bold text-amber-700 text-lg leading-tight">Muebles Rubí</p>
           <p className="text-xs text-gray-400 mt-0.5">Panel de gestión</p>
         </div>
 
@@ -204,7 +204,7 @@ export default function Layout({ children }) {
                 <line x1="3" y1="16" x2="19" y2="16" />
               </svg>
             </button>
-            <span className="font-bold text-amber-700">Galerías Rubí</span>
+            <span className="font-bold text-amber-700">Muebles Rubí</span>
           </div>
         </header>
 
