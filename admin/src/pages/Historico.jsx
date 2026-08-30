@@ -39,15 +39,11 @@
  *
  * ── BOTONES RÁPIDOS ──────────────────────────────────────────────────────────
  *
- *   Cada botón calcula el rango con aritmética de Date() y llama setPeriodo().
- *
- *   "Semana pasada": busca el domingo más reciente (fin de semana), retrocede 6
- *   días para el lunes (inicio de semana). Semana = lun-dom.
- *
- *   "Mes pasado": new Date(año, mes, 0) da el último día del mes anterior.
- *   Desde ahí, new Date(año, mes-1, 1) da el primer día de ese mes.
- *
- *   "Mes actual": primer y último día del mes en curso.
+ *   Los rangos (semana ISO lun-dom, mes) se calculan en ../lib/periodos.js,
+ *   no aquí — ese módulo tiene su propia prueba (periodos.test.js) porque
+ *   ya hubo un bug real ahí: toISO() usaba Date.toISOString(), que corre la
+ *   fecha un día en zonas UTC+, sin que la aritmética de "cuál es el lunes"
+ *   en sí estuviera mal. Ver el comentario de cabecera de ese archivo.
  *
  * ── CÓMO LOS ENDPOINTS RECIBEN EL RANGO ──────────────────────────────────────
  *
@@ -73,46 +69,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts'
+import { toISO, aMesInput, rangoMesActual, rangoMesPasado, rangoSemanaPasada } from '../lib/periodos'
 
 
-// ── Helpers de fecha ──────────────────────────────────────────────────────────
-
-const toISO = (d) => d.toISOString().slice(0, 10)
-
-// "YYYY-MM" para <input type="month">
-const aMesInput = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-
-function rangoMesActual() {
-  const hoy = new Date()
-  return {
-    desde: toISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
-    hasta: toISO(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)),
-  }
-}
-
-function rangoMesPasado() {
-  const hoy = new Date()
-  const ultimo  = new Date(hoy.getFullYear(), hoy.getMonth(), 0)   // último día del mes anterior
-  const primero = new Date(ultimo.getFullYear(), ultimo.getMonth(), 1)
-  return { desde: toISO(primero), hasta: toISO(ultimo) }
-}
-
-function rangoSemanaPassada() {
-  const hoy = new Date()
-  hoy.setHours(0, 0, 0, 0)
-  // getDay(): 0=Dom, 1=Lun, ..., 6=Sáb
-  // Días hasta el domingo más reciente que ya pasó (excluyendo hoy si es domingo):
-  //   dow=0 → 7, dow=1 → 1, dow=2 → 2, ..., dow=6 → 6
-  const diasHastaDom = hoy.getDay() === 0 ? 7 : hoy.getDay()
-  const domingo = new Date(hoy)
-  domingo.setDate(hoy.getDate() - diasHastaDom)   // domingo fin de semana pasada
-  const lunes = new Date(domingo)
-  lunes.setDate(domingo.getDate() - 6)             // lunes inicio de semana pasada
-  return { desde: toISO(lunes), hasta: toISO(domingo) }
-}
-
-// Formateadores
+// ── Formateadores ──────────────────────────────────────────────────────────
 const mxn = (n) =>
   Number(n).toLocaleString('es-MX', {
     style: 'currency', currency: 'MXN',
@@ -255,7 +215,7 @@ export default function Historico() {
           {[
             {
               label: 'Semana pasada',
-              fn: () => aplicarAtajo(rangoSemanaPassada()),
+              fn: () => aplicarAtajo(rangoSemanaPasada()),
             },
             {
               label: 'Mes pasado',
