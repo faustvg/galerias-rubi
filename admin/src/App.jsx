@@ -24,6 +24,7 @@ import Sucursales from './pages/Sucursales'
 import Testimonios from './pages/Testimonios'
 import Usuarios from './pages/Usuarios'
 import Historico from './pages/Historico'
+import NuevosIngresos from './pages/NuevosIngresos'
 
 export default function App() {
   return (
@@ -44,6 +45,12 @@ export default function App() {
 
           <Route path="/productos" element={
             <RutaProtegida><Productos /></RutaProtegida>
+          } />
+
+          {/* Solo roles con permiso de escritura de stock — la página misma
+              lo verifica igual que Sucursales/Testimonios/Usuarios. */}
+          <Route path="/nuevos-ingresos" element={
+            <RutaProtegida><NuevosIngresos /></RutaProtegida>
           } />
 
           <Route path="/notas" element={

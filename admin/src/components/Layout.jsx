@@ -82,6 +82,9 @@ function IconoHistorico(p) {
 function IconoCatalogo(p) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3.5 7.5 12 3l8.5 4.5L12 12 3.5 7.5Z"/><path d="M3.5 7.5V16l8.5 4.5 8.5-4.5V7.5"/><path d="M12 12v8.5"/></svg>
 }
+function IconoNuevosIngresos(p) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="9.5" width="18" height="11" rx="1.5"/><path d="M3 9.5 12 4l9 5.5"/><path d="M12 12.5v5M9.3 15h5.4"/></svg>
+}
 function IconoNotas(p) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 2.5h12v19l-2.5-1.6-2.5 1.6-2.5-1.6-2.5 1.6-2-1.3z"/><path d="M8.5 8h7M8.5 12h7"/></svg>
 }
@@ -108,6 +111,7 @@ const NAV = [
   { to: '/',            label: 'Inicio',         end: true,  icon: IconoInicio      },
   { to: '/historico',   label: 'Histórico',                  icon: IconoHistorico   },
   { to: '/productos',   label: 'Catálogo',                   icon: IconoCatalogo    },
+  { to: '/nuevos-ingresos', label: 'Nuevos Ingresos', soloRoles: ['superadmin', 'admin', 'worker'], icon: IconoNuevosIngresos },
   { to: '/notas',       label: 'Notas / Ventas',              icon: IconoNotas       },
   { to: '/categorias',  label: 'Categorías',                 icon: IconoCategorias  },
   { to: '/proveedores', label: 'Proveedores',                icon: IconoProveedores },
