@@ -69,7 +69,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { toISO, aMesInput, rangoMesActual, rangoMesPasado, rangoSemanaPasada } from '../lib/periodos'
+import {
+  toISO, aMesInput, rangoMesActual, rangoMesPasado,
+  rangoSemanaActual, rangoSemanaPasada, rangoSemanaDe, lunesDeLaSemana,
+} from '../lib/periodos'
 
 
 // ── Formateadores ──────────────────────────────────────────────────────────
@@ -119,10 +122,17 @@ export default function Historico() {
   const es_worker = usuario?.rol === 'worker'
 
   // ── Estado del periodo ───────────────────────────────────────────────────
-  // `periodo` es la fuente de verdad para el fetch.
-  // `mesInput` sincroniza el valor del <input type="month">.
-  const [periodo,   setPeriodo]   = useState(rangoMesActual)
-  const [mesInput,  setMesInput]  = useState(() => aMesInput(new Date()))
+  // `periodo` es la fuente de verdad para el fetch, sin importar el tipo.
+  // `tipoPeriodo` decide qué picker se muestra ("mes" = input[type=month],
+  // "semana" = input[type=date] que se ajusta al lunes de la semana
+  // elegida). `mesInput`/`semanaInput` sincronizan cada picker con su
+  // propio formato — se guardan por separado para no perder la selección
+  // de uno al usar el otro (si el usuario alterna Mes/Semana de un lado a
+  // otro, cada picker recuerda su último valor).
+  const [tipoPeriodo, setTipoPeriodo] = useState('mes')   // 'mes' | 'semana'
+  const [periodo,     setPeriodo]     = useState(rangoMesActual)
+  const [mesInput,    setMesInput]    = useState(() => aMesInput(new Date()))
+  const [semanaInput, setSemanaInput] = useState(() => toISO(lunesDeLaSemana(new Date())))
 
   // ── Estado de datos ──────────────────────────────────────────────────────
   const [resumen,   setResumen]   = useState(null)
@@ -172,9 +182,36 @@ export default function Historico() {
     })
   }
 
+  // valor = "2026-06-17" desde <input type="date"> — cualquier día de la
+  // semana elegida; se ajusta al lunes de esa semana ISO (Parte 4).
+  function seleccionarSemana(valor) {
+    if (!valor) return
+    const lunes = lunesDeLaSemana(new Date(valor + 'T00:00:00'))
+    setSemanaInput(toISO(lunes))
+    setPeriodo(rangoSemanaDe(lunes))
+  }
+
   function aplicarAtajo(rango, nuevoMesInput = '') {
     setPeriodo(rango)
     setMesInput(nuevoMesInput)
+  }
+
+  function aplicarAtajoSemana(rango) {
+    setPeriodo(rango)
+    setSemanaInput(rango.desde)
+  }
+
+  // Alternar Mes/Semana recalcula el periodo al tipo actual (mes actual o
+  // semana actual) — evita quedar con un picker mostrando "julio" mientras
+  // `periodo` sigue siendo la semana que se había elegido antes de alternar.
+  function cambiarTipoPeriodo(tipo) {
+    setTipoPeriodo(tipo)
+    if (tipo === 'mes') {
+      const r = rangoMesActual()
+      aplicarAtajo(r, r.desde.slice(0, 7))
+    } else {
+      aplicarAtajoSemana(rangoSemanaActual())
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -192,46 +229,82 @@ export default function Historico() {
       </div>
 
       {/* ── Selector de periodo ───────────────────────────────────────────────
-          input[type="month"] renderiza un picker nativo de mes+año.
-          Su valor es "YYYY-MM"; nosotros lo convertimos a { desde, hasta }.
-          Los botones rápidos llaman a aplicarAtajo() directamente con el rango
-          precomputado y limpian / actualizan el input según corresponda. */}
+          El toggle Mes/Semana decide qué picker se muestra y qué atajos
+          aparecen. input[type="month"] da "YYYY-MM"; el input[type="date"]
+          de semana acepta cualquier día y seleccionarSemana() lo ajusta al
+          lunes de esa semana ISO — el input SIEMPRE refleja ese lunes
+          después de elegir, nunca el día que el usuario tocó al azar. */}
       <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 mb-5
                       flex flex-wrap items-center gap-3">
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide shrink-0">
           Periodo
         </span>
 
-        <input
-          type="month"
-          value={mesInput}
-          max={aMesInput(new Date())}
-          onChange={(e) => seleccionarMes(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white
-                     focus:outline-none focus:ring-2 focus:ring-amber-400"
-        />
+        {/* Toggle Mes / Semana */}
+        <div className="flex rounded-xl border border-gray-200 overflow-hidden shrink-0" role="group" aria-label="Tipo de periodo">
+          {[
+            { valor: 'mes',    etiqueta: 'Mes' },
+            { valor: 'semana', etiqueta: 'Semana' },
+          ].map(({ valor, etiqueta }) => (
+            <button
+              key={valor}
+              onClick={() => cambiarTipoPeriodo(valor)}
+              aria-pressed={tipoPeriodo === valor}
+              className={`px-3 py-2 text-sm font-medium transition-colors ${
+                tipoPeriodo === valor
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {etiqueta}
+            </button>
+          ))}
+        </div>
+
+        {tipoPeriodo === 'mes' ? (
+          <input
+            type="month"
+            value={mesInput}
+            max={aMesInput(new Date())}
+            onChange={(e) => seleccionarMes(e.target.value)}
+            className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white
+                       focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+        ) : (
+          <input
+            type="date"
+            value={semanaInput}
+            max={toISO(new Date())}
+            onChange={(e) => seleccionarSemana(e.target.value)}
+            title="Elige cualquier día — se ajusta al lunes de esa semana"
+            className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white
+                       focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+        )}
 
         <div className="flex gap-2 flex-wrap">
-          {[
-            {
-              label: 'Semana pasada',
-              fn: () => aplicarAtajo(rangoSemanaPasada()),
-            },
-            {
-              label: 'Mes pasado',
-              fn: () => {
-                const r = rangoMesPasado()
-                aplicarAtajo(r, r.desde.slice(0, 7))
-              },
-            },
-            {
-              label: 'Mes actual',
-              fn: () => {
-                const r = rangoMesActual()
-                aplicarAtajo(r, r.desde.slice(0, 7))
-              },
-            },
-          ].map(({ label, fn }) => (
+          {(tipoPeriodo === 'mes'
+            ? [
+                {
+                  label: 'Mes pasado',
+                  fn: () => {
+                    const r = rangoMesPasado()
+                    aplicarAtajo(r, r.desde.slice(0, 7))
+                  },
+                },
+                {
+                  label: 'Mes actual',
+                  fn: () => {
+                    const r = rangoMesActual()
+                    aplicarAtajo(r, r.desde.slice(0, 7))
+                  },
+                },
+              ]
+            : [
+                { label: 'Semana pasada', fn: () => aplicarAtajoSemana(rangoSemanaPasada()) },
+                { label: 'Semana actual', fn: () => aplicarAtajoSemana(rangoSemanaActual()) },
+              ]
+          ).map(({ label, fn }) => (
             <button
               key={label}
               onClick={fn}
