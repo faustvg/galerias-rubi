@@ -61,14 +61,13 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../api'
 import Layout from '../components/Layout'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer,
-} from 'recharts'
+import KpiTile from '../components/KpiTile'
+import { FilaLista, ListaCard, ListaVacia } from '../components/FilaLista'
+import GraficaBarras from '../components/GraficaBarras'
 import {
   toISO, aMesInput, rangoMesActual, rangoMesPasado,
   rangoSemanaActual, rangoSemanaPasada, rangoSemanaDe, lunesDeLaSemana,
@@ -81,14 +80,6 @@ const mxn = (n) =>
     style: 'currency', currency: 'MXN',
     minimumFractionDigits: 0, maximumFractionDigits: 0,
   })
-
-const mxnCorto = (v) => {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
-  if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}K`
-  return `$${v}`
-}
-
-const mxnTooltip = (value) => [mxn(value), 'Utilidad estimada']
 
 const formatFecha = (iso) =>
   new Date(iso + 'T00:00:00').toLocaleDateString('es-MX', {
@@ -342,52 +333,50 @@ export default function Historico() {
       {!cargando && resumen && (
         <>
           {/* ── 1. Franja de KPIs — 3 existentes + Inversión en restock + Balance ──
-              Balance es el único que carga color por SIGNO (verde/rojo, ya
-              existentes en COLOR_MAP) — Inversión se queda neutral (gray):
-              es informativa, no lleva una señal de "bien/mal" por sí sola. */}
+              Ronda de legibilidad: tarjetas neutrales, el color vive SOLO en
+              el número cuando de verdad importa (Resta pendiente, Balance),
+              nunca en la tarjeta entera — ver KpiTile.jsx. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-2">
-            <KpiCard
+            <KpiTile
               etiqueta="Ventas en el periodo"
               valor={mxn(resumen.total_ventas)}
               sub={`${resumen.num_notas} nota${resumen.num_notas !== 1 ? 's' : ''}`}
-              color="amber"
             />
-            <KpiCard
+            <KpiTile
               etiqueta="Resta pendiente"
               valor={mxn(resumen.resta_pendiente)}
               sub={`${resumen.num_notas_resta} nota${resumen.num_notas_resta !== 1 ? 's' : ''} sin cobrar`}
-              color={resumen.resta_pendiente > 0 ? 'red' : 'green'}
+              acento={resumen.resta_pendiente > 0 ? 'rojo' : 'neutral'}
             />
-            <KpiCard
+            <KpiTile
               etiqueta="Entregas completadas"
               valor={`${resumen.entregadas.length}`}
               sub={resumen.entregadas.length > 0
                 ? `Última: ${formatFecha(resumen.entregadas[0].fecha_entrega)}`
                 : 'Ninguna en el periodo'}
-              color={resumen.entregadas.length > 0 ? 'green' : 'gray'}
             />
-            <KpiCard
+            <KpiTile
               etiqueta="Inversión en restock"
               valor={mxn(gastoRestock?.gasto_total ?? 0)}
               sub={movimientos ? `${movimientos.filter((m) => m.costo_total != null).length} entrada${movimientos.filter((m) => m.costo_total != null).length !== 1 ? 's' : ''} con costo` : ''}
-              color="gray"
             />
-            <KpiCard
+            <KpiTile
               etiqueta="Balance"
               valor={mxn(resumen.total_ventas - (gastoRestock?.gasto_total ?? 0))}
               sub="Ventas − inversión"
-              color={resumen.total_ventas - (gastoRestock?.gasto_total ?? 0) >= 0 ? 'green' : 'red'}
+              acento={resumen.total_ventas - (gastoRestock?.gasto_total ?? 0) >= 0 ? 'verde' : 'rojo'}
             />
           </div>
 
           {/* Costos faltantes: el total de Inversión/Balance NO es exacto si
               hay entradas sin costo_unitario capturado — avisar en vez de
               mostrar un número que parece preciso y no lo es. */}
-          <p className="text-xs text-gray-400 mb-6">
-            {gastoRestock && gastoRestock.entradas_sin_costo > 0
-              ? `⚠ ${gastoRestock.entradas_sin_costo} entrada${gastoRestock.entradas_sin_costo !== 1 ? 's' : ''} sin costo registrado en este periodo — no ${gastoRestock.entradas_sin_costo !== 1 ? 'están incluidas' : 'está incluida'} en Inversión ni en Balance.`
-              : ' '}
-          </p>
+          {gastoRestock && gastoRestock.entradas_sin_costo > 0 && (
+            <p className="text-xs text-gray-400 mb-6">
+              {gastoRestock.entradas_sin_costo} entrada{gastoRestock.entradas_sin_costo !== 1 ? 's' : ''} sin costo registrado en este periodo
+              — no {gastoRestock.entradas_sin_costo !== 1 ? 'están incluidas' : 'está incluida'} en Inversión ni en Balance.
+            </p>
+          )}
 
           {/* ── 2/3. Panel izquierdo (Notas) y derecho (gasto de restock) ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -414,34 +403,11 @@ export default function Historico() {
 }
 
 
-// ── Tarjeta de KPI ────────────────────────────────────────────────────────────
-
-const COLOR_MAP = {
-  amber: 'bg-amber-50 border-amber-200 text-amber-700',
-  red:   'bg-red-50   border-red-200   text-red-700',
-  green: 'bg-green-50 border-green-200 text-green-700',
-  blue:  'bg-blue-50  border-blue-200  text-blue-700',
-  gray:  'bg-gray-50  border-gray-200  text-gray-600',
-}
-
-function KpiCard({ etiqueta, valor, sub, color = 'gray' }) {
-  const cls = COLOR_MAP[color] ?? COLOR_MAP.gray
-  return (
-    <div className={`rounded-2xl border px-5 py-4 ${cls}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide opacity-70 mb-1">
-        {etiqueta}
-      </p>
-      <p className="text-2xl font-bold leading-tight">{valor}</p>
-      {sub && <p className="text-xs mt-1 opacity-70">{sub}</p>}
-    </div>
-  )
-}
-
-
 // ── Panel izquierdo: entregas (Parte 5) ─────────────────────────────────────
-// Filas más compactas que antes (una línea, no dos) + "Ver todas" cuando hay
-// más de LIMITE_VISIBLE — el pedido explícito de Faust de "apretar" esta
-// lista, sin perder el detalle completo a un clic de distancia.
+// Filas de una sola línea vía FilaLista (compartida con Inicio y con el
+// panel de restock, ver ../components/FilaLista.jsx) + "Ver todas" cuando
+// hay más de LIMITE_VISIBLE — el pedido explícito de Faust de "apretar"
+// esta lista, sin perder el detalle completo a un clic de distancia.
 
 const LIMITE_VISIBLE_ENTREGAS = 5
 
@@ -455,26 +421,18 @@ function PanelEntregas({ entregadas }) {
         Entregas completadas en el periodo
       </h2>
       {entregadas.length === 0 ? (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-6 text-center">
-          <p className="text-sm text-gray-400">Ninguna entrega completada en este periodo.</p>
-        </div>
+        <ListaVacia mensaje="Ninguna entrega completada en este periodo." />
       ) : (
-        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <ListaCard>
           {visibles.map((e, i) => (
-            <Link
+            <FilaLista
               key={e.folio}
               to={`/notas/${e.folio}`}
-              className={`flex items-center justify-between gap-3 px-3.5 py-2 text-sm
-                          hover:bg-amber-50 transition-colors ${
-                i < visibles.length - 1 ? 'border-b border-gray-100' : ''
-              }`}
-            >
-              <div className="min-w-0 flex items-baseline gap-2">
-                <p className="font-medium text-gray-900 truncate">{e.etiqueta}</p>
-                <span className="text-xs text-gray-400 shrink-0">{formatFecha(e.fecha_entrega)}</span>
-              </div>
-              <p className="font-semibold text-gray-700 shrink-0">{mxn(e.total)}</p>
-            </Link>
+              titulo={e.etiqueta}
+              meta={formatFecha(e.fecha_entrega)}
+              derecha={mxn(e.total)}
+              ultima={i === visibles.length - 1}
+            />
           ))}
           {entregadas.length > LIMITE_VISIBLE_ENTREGAS && (
             <button
@@ -485,7 +443,7 @@ function PanelEntregas({ entregadas }) {
               {expandido ? 'Ver menos' : `Ver todas (${entregadas.length})`}
             </button>
           )}
-        </div>
+        </ListaCard>
       )}
     </section>
   )
@@ -498,25 +456,23 @@ function PanelEntregas({ entregadas }) {
 function PanelUtilidadCategoria({ por_categoria }) {
   const hayDatos = por_categoria && por_categoria.some((d) => d.utilidad !== 0)
   if (hayDatos) {
-    return <GraficarBarras titulo="Utilidad por categoría" datos={por_categoria} color="#f59e0b" />
+    return <GraficaBarras titulo="Utilidad por categoría" datos={por_categoria} />
   }
   return (
     <section>
       <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
         Utilidad por categoría
       </h2>
-      <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-6 text-center">
-        <p className="text-sm text-gray-400">Sin datos de utilidad por categoría en este periodo.</p>
-      </div>
+      <ListaVacia mensaje="Sin datos de utilidad por categoría en este periodo." />
     </section>
   )
 }
 
 // ── Panel derecho: gasto de restock del periodo (Parte 5) ───────────────────
-// Reusa la forma de "Entradas registradas" de HistorialStock.jsx (fecha,
-// cantidad, proveedor, costo) pero para TODOS los productos del periodo a
-// la vez, con el total corrido arriba. Entradas sin costo se muestran con
-// "—" (mismo criterio que HistorialStock), nunca como $0.
+// Misma fila compacta que "Entregas completadas" (FilaLista) — antes esta
+// lista usaba dos líneas por entrada (nombre en negrita + fecha/cantidad/
+// proveedor debajo), la única lista de la página con esa densidad distinta.
+// Entradas sin costo se muestran con "—" en gris (nunca como $0).
 
 function PanelRestock({ movimientos, gastoTotal }) {
   return (
@@ -526,33 +482,26 @@ function PanelRestock({ movimientos, gastoTotal }) {
           Gasto de restock en el periodo
         </h2>
         {gastoTotal != null && (
-          <span className="text-sm font-bold text-gray-700 shrink-0">{mxn(gastoTotal)}</span>
+          <span className="text-sm font-bold text-gray-900 shrink-0">{mxn(gastoTotal)}</span>
         )}
       </div>
       {!movimientos || movimientos.length === 0 ? (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-6 text-center">
-          <p className="text-sm text-gray-400">Sin entradas de inventario en este periodo.</p>
-        </div>
+        <ListaVacia mensaje="Sin entradas de inventario en este periodo." />
       ) : (
-        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden max-h-[420px] overflow-y-auto">
-          {movimientos.map((m, i) => (
-            <div
-              key={m.id}
-              className={`flex items-center justify-between gap-3 px-3.5 py-2 text-sm ${
-                i < movimientos.length - 1 ? 'border-b border-gray-100' : ''
-              }`}
-            >
-              <div className="min-w-0">
-                <p className="font-medium text-gray-900 truncate">{m.nombre_producto}</p>
-                <p className="text-xs text-gray-400 truncate">
-                  {formatFecha(m.fecha)} · +{m.cantidad} · {m.nombre_proveedor || 'Sin proveedor'}
-                </p>
-              </div>
-              <p className={`font-semibold shrink-0 ${m.costo_total != null ? 'text-gray-700' : 'text-gray-300'}`}>
-                {m.costo_total != null ? mxn(m.costo_total) : '—'}
-              </p>
-            </div>
-          ))}
+        <div className="max-h-[420px] overflow-y-auto rounded-2xl">
+          <ListaCard>
+            {movimientos.map((m, i) => (
+              <FilaLista
+                key={m.id}
+                titulo={m.nombre_producto}
+                meta={`${formatFecha(m.fecha)} · +${m.cantidad} · ${m.nombre_proveedor || 'Sin proveedor'}`}
+                derecha={m.costo_total != null
+                  ? mxn(m.costo_total)
+                  : <span className="text-gray-300">—</span>}
+                ultima={i === movimientos.length - 1}
+              />
+            ))}
+          </ListaCard>
         </div>
       )}
     </section>
@@ -572,67 +521,14 @@ function GraficasUtilidadResto({ utilidad, es_worker }) {
   return (
     <div className="space-y-6 mt-6">
       {hayDatos(por_proveedor) && (
-        <GraficarBarras titulo="Utilidad por proveedor"  datos={por_proveedor} color="#6366f1" />
+        <GraficaBarras titulo="Utilidad por proveedor" datos={por_proveedor} />
       )}
       {hayDatos(por_sucursal) && (
-        <GraficarBarras titulo="Utilidad por sucursal"   datos={por_sucursal}  color="#ec4899" />
+        <GraficaBarras titulo="Utilidad por sucursal" datos={por_sucursal} />
       )}
       {!es_worker && hayDatos(por_worker) && (
-        <GraficarBarras titulo="Utilidad por vendedor"   datos={por_worker}    color="#10b981" />
+        <GraficaBarras titulo="Utilidad por vendedor" datos={por_worker} />
       )}
     </div>
-  )
-}
-
-// ── Gráfica de barras horizontal (wrapper de recharts) ────────────────────────
-
-function GraficarBarras({ titulo, datos, color }) {
-  return (
-    <section>
-      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-        {titulo}
-      </h2>
-      <div className="bg-white border border-gray-200 rounded-2xl p-4">
-        <ResponsiveContainer width="100%" height={datos.length > 5 ? 280 : 200}>
-          <BarChart
-            data={datos}
-            layout="vertical"
-            margin={{ top: 0, right: 16, left: 8, bottom: 0 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
-            <XAxis
-              type="number"
-              tickFormatter={mxnCorto}
-              tick={{ fontSize: 11, fill: '#9ca3af' }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              type="category"
-              dataKey="nombre"
-              width={110}
-              tick={{ fontSize: 12, fill: '#374151' }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <Tooltip
-              formatter={mxnTooltip}
-              contentStyle={{
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb',
-                fontSize: '13px',
-              }}
-              cursor={{ fill: '#fef3c7' }}
-            />
-            <Bar
-              dataKey="utilidad"
-              fill={color}
-              radius={[0, 4, 4, 0]}
-              maxBarSize={28}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </section>
   )
 }

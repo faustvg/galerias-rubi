@@ -31,6 +31,7 @@ import { apiFetch } from '../api'
 import { useAuth } from '../context/AuthContext'
 import HistorialStock from '../components/HistorialStock'
 import { toISO } from '../lib/periodos'
+import { ACENTO_HEX } from '../lib/theme'
 
 // Mismo criterio que Sucursales.jsx: el nav item ya está oculto para viewer
 // (ver Layout.jsx), pero si alguien llega por URL directa, esta página es
@@ -144,7 +145,7 @@ export default function NuevosIngresos() {
   return (
     <Layout>
       <div className="mb-5">
-        <h1 className="text-xl font-bold text-gray-900">Nuevos Ingresos</h1>
+        <h1 className="text-xl font-bold text-gray-900">Restock</h1>
         <p className="text-sm text-gray-500 mt-0.5">
           Agrega stock a cualquier producto y revisa cuánto se ha invertido por semana.
         </p>
@@ -226,7 +227,7 @@ export default function NuevosIngresos() {
                         activePayload del evento sintético del contenedor. */}
                     <Bar
                       dataKey="gasto_total"
-                      fill="#A46447"
+                      fill={ACENTO_HEX}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={40}
                       cursor="pointer"

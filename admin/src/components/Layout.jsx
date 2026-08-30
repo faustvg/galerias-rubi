@@ -111,7 +111,7 @@ const NAV = [
   { to: '/',            label: 'Inicio',         end: true,  icon: IconoInicio      },
   { to: '/historico',   label: 'Histórico',                  icon: IconoHistorico   },
   { to: '/productos',   label: 'Catálogo',                   icon: IconoCatalogo    },
-  { to: '/nuevos-ingresos', label: 'Nuevos Ingresos', soloRoles: ['superadmin', 'admin', 'worker'], icon: IconoNuevosIngresos },
+  { to: '/nuevos-ingresos', label: 'Restock', soloRoles: ['superadmin', 'admin', 'worker'], icon: IconoNuevosIngresos },
   { to: '/notas',       label: 'Notas / Ventas',              icon: IconoNotas       },
   { to: '/categorias',  label: 'Categorías',                 icon: IconoCategorias  },
   { to: '/proveedores', label: 'Proveedores',                icon: IconoProveedores },

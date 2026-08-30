@@ -24,37 +24,15 @@
  *   la consulta agrega WHERE usuario_id = tu_id antes de hacer el GROUP BY.
  *   Tú como frontend ni te enteras — recibes solo tus números.
  *
- * ── ¿CÓMO SE USA UNA LIBRERÍA DE GRÁFICAS (RECHARTS)? ───────────────────
+ * ── GRÁFICAS Y TARJETAS DE KPI ────────────────────────────────────────────
  *
- *   Recharts convierte arrays de objetos en SVG.
- *   Regla de oro: tus datos DEBEN ser un array de objetos planos.
- *     [{ nombre: "Salas", utilidad: 12500 }, …]
- *
- *   Componentes clave:
- *
- *   <ResponsiveContainer width="100%" height={220}>
- *     ← Hace que la gráfica se ajuste al ancho del contenedor padre.
- *       SIEMPRE úsalo para que el gráfico sea responsivo.
- *
- *     <BarChart data={datos}>
- *       ← Le dices CUÁLES son los datos. Cada objeto = una barra.
- *
- *       <XAxis dataKey="nombre" />
- *         ← Eje X: qué campo de cada objeto es la etiqueta.
- *
- *       <YAxis tickFormatter={mxnCorto} />
- *         ← Eje Y: número. tickFormatter formatea las marcas (ej. "$12K").
- *
- *       <Tooltip formatter={mxnFormatter} />
- *         ← Tooltip al pasar el mouse. formatter = cómo mostrar el valor.
- *
- *       <Bar dataKey="utilidad" fill="#f59e0b" radius={[4,4,0,0]} />
- *         ← Las barras. dataKey = qué campo es la altura. fill = color.
- *
- *     </BarChart>
- *   </ResponsiveContainer>
- *
- *   Eso es todo. Recharts hace el SVG, tú solo describes el esquema.
+ *   El wrapper de recharts (antes vivía aquí mismo) ahora es
+ *   ../components/GraficaBarras.jsx, compartido con Historico.jsx — un solo
+ *   lugar que define cómo se ve una gráfica de barras en todo el panel,
+ *   incluido el acento de color único (../lib/theme.js). Mismo criterio
+ *   para las tarjetas de KPI (../components/KpiTile.jsx) y las filas de
+ *   lista (../components/FilaLista.jsx): Inicio y Histórico reusan los
+ *   mismos tres componentes en vez de mantener cada uno su propia versión.
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -62,10 +40,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../api'
 import Layout from '../components/Layout'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer,
-} from 'recharts'
+import KpiTile from '../components/KpiTile'
+import { FilaLista, ListaCard, ListaVacia } from '../components/FilaLista'
+import GraficaBarras from '../components/GraficaBarras'
 
 // ── Formateadores de moneda ──────────────────────────────────────────────────
 const mxn = (n) =>
@@ -73,16 +50,6 @@ const mxn = (n) =>
     style: 'currency', currency: 'MXN',
     minimumFractionDigits: 0, maximumFractionDigits: 0,
   })
-
-// Para las marcas del eje Y — número compacto ($12K, $1.2M)
-const mxnCorto = (v) => {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
-  if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}K`
-  return `$${v}`
-}
-
-// Para el tooltip de recharts (recibe [valor, nombre])
-const mxnTooltip = (value) => [mxn(value), 'Utilidad estimada']
 
 const formatFecha = (iso) =>
   new Date(iso + 'T00:00:00').toLocaleDateString('es-MX', {
@@ -223,69 +190,61 @@ export default function Dashboard() {
 
           {/* ── Tarjetas de KPIs ── */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <KpiCard
+            <KpiTile
               etiqueta={`Ventas (${VENTANAS.find((v) => v.valor === ventana)?.etiqueta})`}
               valor={mxn(resumen.total_ventas)}
               sub={`${resumen.num_notas_ventas} nota${resumen.num_notas_ventas !== 1 ? 's' : ''}`}
-              color="amber"
             />
-            <KpiCard
+            <KpiTile
               etiqueta="Resta pendiente"
               valor={mxn(resumen.resta_total)}
               sub={`${resumen.num_notas_resta} nota${resumen.num_notas_resta !== 1 ? 's' : ''} abiertas`}
-              color={resumen.resta_total > 0 ? 'red' : 'green'}
+              acento={resumen.resta_total > 0 ? 'rojo' : 'neutral'}
             />
-            <KpiCard
+            <KpiTile
               etiqueta="Entregas próximas"
               valor={`${entregas.length}`}
               sub={entregas.length > 0 ? `Próxima: ${formatFecha(entregas[0].fecha_entrega)}` : 'Ninguna en 30 días'}
-              color={entregas.length > 0 ? 'blue' : 'gray'}
             />
           </div>
 
-          {/* ── Entregas próximas (lista) ── */}
-          {entregas.length > 0 && (
-            <section className="mb-6">
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Próximas entregas (30 días)
-              </h2>
-              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          {/* ── Entregas próximas (lista) ── Misma FilaLista compartida que
+              Histórico — antes esta sección se ocultaba por completo si no
+              había entregas próximas; ahora muestra el mismo mensaje
+              compacto que el resto de listas vacías (Parte A.6). */}
+          <section className="mb-6">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Próximas entregas (30 días)
+            </h2>
+            {entregas.length === 0 ? (
+              <ListaVacia mensaje="Ninguna entrega programada en los próximos 30 días." />
+            ) : (
+              <ListaCard>
                 {entregas.map((e, i) => {
                   const dias = diasHasta(e.fecha_entrega)
+                  const colorFecha = dias <= 3 ? 'text-red-600' : dias <= 7 ? 'text-amber-600' : 'text-gray-600'
                   return (
-                    <Link
+                    <FilaLista
                       key={e.folio}
                       to={`/notas/${e.folio}`}
-                      className={`flex items-center justify-between gap-3 px-4 py-3
-                                  hover:bg-amber-50 transition-colors ${
-                        i < entregas.length - 1 ? 'border-b border-gray-100' : ''
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {e.etiqueta}
-                        </p>
-                        <p className="text-xs text-gray-400 font-mono">{e.folio}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className={`text-xs font-semibold ${
-                          dias <= 3 ? 'text-red-600' : dias <= 7 ? 'text-amber-600' : 'text-gray-600'
-                        }`}>
+                      titulo={e.etiqueta}
+                      meta={e.folio}
+                      ultima={i === entregas.length - 1}
+                      derecha={
+                        <span className={colorFecha}>
                           {formatFecha(e.fecha_entrega)}
                           {dias === 0 ? ' (hoy)' : dias === 1 ? ' (mañana)' : ` (${dias}d)`}
-                        </p>
-                        {e.resta > 0 && (
-                          <p className="text-xs text-red-500">
-                            Resta {mxn(e.resta)}
-                          </p>
-                        )}
-                      </div>
-                    </Link>
+                        </span>
+                      }
+                      derechaSub={e.resta > 0 && (
+                        <span className="text-red-500">Resta {mxn(e.resta)}</span>
+                      )}
+                    />
                   )
                 })}
-              </div>
-            </section>
-          )}
+              </ListaCard>
+            )}
+          </section>
 
           {/* ── Gráficas de utilidad ── */}
           {utilidad && (
@@ -303,136 +262,37 @@ export default function Dashboard() {
 }
 
 
-// ── Tarjeta de KPI ────────────────────────────────────────────────────────────
-const COLOR_MAP = {
-  amber: 'bg-amber-50 border-amber-200 text-amber-700',
-  red:   'bg-red-50   border-red-200   text-red-700',
-  green: 'bg-green-50 border-green-200 text-green-700',
-  blue:  'bg-blue-50  border-blue-200  text-blue-700',
-  gray:  'bg-gray-50  border-gray-200  text-gray-600',
-}
-
-function KpiCard({ etiqueta, valor, sub, color = 'gray' }) {
-  const cls = COLOR_MAP[color] ?? COLOR_MAP.gray
-  return (
-    <div className={`rounded-2xl border px-5 py-4 ${cls}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide opacity-70 mb-1">
-        {etiqueta}
-      </p>
-      <p className="text-2xl font-bold leading-tight">{valor}</p>
-      {sub && <p className="text-xs mt-1 opacity-70">{sub}</p>}
-    </div>
-  )
-}
-
-
 // ── Sección de gráficas ───────────────────────────────────────────────────────
+// Un solo acento (ver ../components/GraficaBarras.jsx) — antes cada
+// desglose usaba su propio color (naranja/índigo/rosa/verde); ahora las 4
+// gráficas leen como una sola sección, no cuatro widgets distintos.
 function GraficasUtilidad({ utilidad, es_worker }) {
   const { por_categoria, por_proveedor, por_sucursal, por_worker } = utilidad
 
   const hayDatos = (arr) => arr && arr.some((d) => d.utilidad !== 0)
+  const hayAlguna = hayDatos(por_categoria) || hayDatos(por_proveedor) || hayDatos(por_sucursal) || (!es_worker && hayDatos(por_worker))
+
+  if (!hayAlguna) {
+    return (
+      <ListaVacia mensaje="Aún no hay datos de utilidad. Agrega costos a los productos para ver los márgenes." />
+    )
+  }
 
   return (
     <div className="space-y-6">
       {hayDatos(por_categoria) && (
-        <GraficarBarras
-          titulo="Utilidad estimada por categoría"
-          datos={por_categoria}
-          color="#f59e0b"
-        />
+        <GraficaBarras titulo="Utilidad estimada por categoría" datos={por_categoria} />
       )}
       {hayDatos(por_proveedor) && (
-        <GraficarBarras
-          titulo="Utilidad estimada por proveedor"
-          datos={por_proveedor}
-          color="#6366f1"
-        />
+        <GraficaBarras titulo="Utilidad estimada por proveedor" datos={por_proveedor} />
       )}
       {hayDatos(por_sucursal) && (
-        <GraficarBarras
-          titulo="Utilidad estimada por sucursal"
-          datos={por_sucursal}
-          color="#ec4899"
-        />
+        <GraficaBarras titulo="Utilidad estimada por sucursal" datos={por_sucursal} />
       )}
       {/* Solo admin/superadmin/viewer ven comparación entre workers */}
       {!es_worker && hayDatos(por_worker) && (
-        <GraficarBarras
-          titulo="Utilidad estimada por vendedor"
-          datos={por_worker}
-          color="#10b981"
-        />
-      )}
-      {!hayDatos(por_categoria) && !hayDatos(por_proveedor) && (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-8 text-center">
-          <p className="text-sm text-gray-400">
-            Aún no hay datos de utilidad.
-            Agrega costos a los productos para ver los márgenes.
-          </p>
-        </div>
+        <GraficaBarras titulo="Utilidad estimada por vendedor" datos={por_worker} />
       )}
     </div>
-  )
-}
-
-// ── Gráfica de barras (wrapper de recharts) ───────────────────────────────────
-// datos = [{ nombre: string, utilidad: number }]
-function GraficarBarras({ titulo, datos, color }) {
-  return (
-    <section>
-      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-        {titulo}
-      </h2>
-      <div className="bg-white border border-gray-200 rounded-2xl p-4">
-        {/*
-          ResponsiveContainer hace que la gráfica mida el ancho del div padre
-          automáticamente y se ajuste al hacer resize. Sin él, la gráfica tendría
-          ancho fijo y rompería en móvil. height sí se pone fijo en píxeles.
-        */}
-        <ResponsiveContainer width="100%" height={datos.length > 5 ? 280 : 200}>
-          <BarChart
-            data={datos}
-            layout="vertical"
-            margin={{ top: 0, right: 16, left: 8, bottom: 0 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
-            <XAxis
-              type="number"
-              tickFormatter={mxnCorto}
-              tick={{ fontSize: 11, fill: '#9ca3af' }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              type="category"
-              dataKey="nombre"
-              width={110}
-              tick={{ fontSize: 12, fill: '#374151' }}
-              axisLine={false}
-              tickLine={false}
-            />
-            {/*
-              Tooltip: formatter recibe (valor, nombre_del_campo).
-              Devuelve [etiquetaFormateada, nombreSerie].
-            */}
-            <Tooltip
-              formatter={mxnTooltip}
-              contentStyle={{
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb',
-                fontSize: '13px',
-              }}
-              cursor={{ fill: '#fef3c7' }}
-            />
-            <Bar
-              dataKey="utilidad"
-              fill={color}
-              radius={[0, 4, 4, 0]}
-              maxBarSize={28}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </section>
   )
 }
