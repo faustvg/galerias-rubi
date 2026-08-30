@@ -764,3 +764,169 @@ async def gasto_restock(
         }
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/gasto-restock/detalle
+# ---------------------------------------------------------------------------
+# Detalle de gasto de restock para UN periodo puntual (no agrupado por
+# semana/mes como /gasto-restock arriba). Usado por dos pantallas nuevas:
+#   - El KPI "Inversión en restock" de Histórico (Parte 5) — solo necesita
+#     gasto_total + entradas_sin_costo.
+#   - El drill-down semanal de Nuevos Ingresos (Parte 6) — usa también los
+#     4 desgloses.
+# ---------------------------------------------------------------------------
+
+@router.get("/gasto-restock/detalle")
+async def gasto_restock_detalle(
+    fecha_desde: date = Query(..., description="Inicio del periodo (inclusive)"),
+    fecha_hasta: date = Query(..., description="Fin del periodo (inclusive)"),
+    _usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    """
+    Cuatro desgloses del gasto de restock del periodo, en consultas
+    SEPARADAS -- mismo criterio que /dashboard/utilidad -- para evitar el
+    AmbiguousColumn que ya mordió una vez a este proyecto al combinar en un
+    solo JOIN columnas 'nombre' que existen en varias tablas a la vez
+    (notas/productos/usuarios/proveedores comparten ese nombre de columna).
+
+    entradas_sin_costo: movimientos del periodo con costo_unitario NULL --
+    quedan FUERA de gasto_total (mismo criterio que /gasto-restock: no
+    tiene sentido un renglón "$0 gastado" mezclado con gasto real) pero se
+    cuentan aparte para que el frontend pueda avisar "N entradas sin costo,
+    no incluidas" en vez de mostrar un total que parece exacto sin serlo.
+
+    por_sucursal vs. por_ubicacion -- NO son lo mismo, aunque hoy con solo
+    2 sucursales activas se parezcan:
+      - por_ubicacion agrupa por el texto libre m.ubicacion tal cual.
+      - por_sucursal agrupa vía m.bodega_id -> bodegas.sucursal_id, una
+        capa MÁS GRUESA: San Pedro hoy tiene 3 bodegas distintas ("Local
+        Jose", "Local Amarillo", "Almacen") que colapsan en un solo grupo
+        de sucursal, mientras que por_ubicacion las sigue mostrando por
+        separado. bodega_id es nullable (movimientos históricos cuyo texto
+        de ubicacion nunca hizo match en el backfill de la migración 012,
+        ver ese archivo) -- esos caen en "Sin sucursal" aquí, un grupo
+        DISTINTO de "Sin ubicación" (que usa m.ubicacion IS NULL).
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT
+                COALESCE(SUM(costo_total), 0),
+                COUNT(*) FILTER (WHERE costo_unitario IS NULL)
+            FROM movimientos_inventario
+            WHERE fecha BETWEEN %s AND %s
+            """,
+            (fecha_desde, fecha_hasta),
+        )
+        gasto_total, entradas_sin_costo = await cur.fetchone()
+
+        await cur.execute(
+            """
+            SELECT COALESCE(prov.proveedor, 'Sin proveedor') AS nombre, SUM(m.costo_total) AS gasto
+            FROM   movimientos_inventario m
+            LEFT   JOIN proveedores prov ON prov.id = m.proveedor_id
+            WHERE  m.fecha BETWEEN %s AND %s AND m.costo_total IS NOT NULL
+            GROUP BY 1 ORDER BY gasto DESC
+            """,
+            (fecha_desde, fecha_hasta),
+        )
+        prov_rows = await cur.fetchall()
+
+        await cur.execute(
+            """
+            SELECT COALESCE(c.nombre, 'Sin categoría') AS nombre, SUM(m.costo_total) AS gasto
+            FROM   movimientos_inventario m
+            JOIN   productos   p ON p.id = m.producto_id
+            LEFT   JOIN categorias c ON c.id = p.categoria_id
+            WHERE  m.fecha BETWEEN %s AND %s AND m.costo_total IS NOT NULL
+            GROUP BY 1 ORDER BY gasto DESC
+            """,
+            (fecha_desde, fecha_hasta),
+        )
+        cat_rows = await cur.fetchall()
+
+        await cur.execute(
+            """
+            SELECT COALESCE(s.nombre, 'Sin sucursal') AS nombre, SUM(m.costo_total) AS gasto
+            FROM   movimientos_inventario m
+            LEFT   JOIN bodegas    b ON b.id = m.bodega_id
+            LEFT   JOIN sucursales s ON s.id = b.sucursal_id
+            WHERE  m.fecha BETWEEN %s AND %s AND m.costo_total IS NOT NULL
+            GROUP BY 1 ORDER BY gasto DESC
+            """,
+            (fecha_desde, fecha_hasta),
+        )
+        suc_rows = await cur.fetchall()
+
+        await cur.execute(
+            """
+            SELECT COALESCE(m.ubicacion, 'Sin ubicación') AS nombre, SUM(m.costo_total) AS gasto
+            FROM   movimientos_inventario m
+            WHERE  m.fecha BETWEEN %s AND %s AND m.costo_total IS NOT NULL
+            GROUP BY 1 ORDER BY gasto DESC
+            """,
+            (fecha_desde, fecha_hasta),
+        )
+        ubi_rows = await cur.fetchall()
+
+    return {
+        "gasto_total":        float(gasto_total or 0),
+        "entradas_sin_costo": int(entradas_sin_costo or 0),
+        "por_proveedor": [{"nombre": r[0], "gasto": float(r[1] or 0)} for r in prov_rows],
+        "por_categoria": [{"nombre": r[0], "gasto": float(r[1] or 0)} for r in cat_rows],
+        "por_sucursal":  [{"nombre": r[0], "gasto": float(r[1] or 0)} for r in suc_rows],
+        "por_ubicacion": [{"nombre": r[0], "gasto": float(r[1] or 0)} for r in ubi_rows],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/movimientos-periodo
+# ---------------------------------------------------------------------------
+# Lista de entradas de inventario (restock) de TODOS los productos en un
+# periodo, más reciente primero. Mismas columnas que GET
+# /productos/{id}/movimientos (catalogo.py) más el nombre del producto,
+# porque aquí abarca varios productos a la vez -- usada por el panel
+# derecho de Histórico (Parte 5) y podría reusarse donde se necesite ver
+# "todo lo que entró" sin filtrar por producto.
+# ---------------------------------------------------------------------------
+
+@router.get("/movimientos-periodo")
+async def movimientos_periodo(
+    fecha_desde: date = Query(..., description="Inicio del periodo (inclusive)"),
+    fecha_hasta: date = Query(..., description="Fin del periodo (inclusive)"),
+    _usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT
+                m.id, m.producto_id, p.nombre AS nombre_producto,
+                m.cantidad, m.fecha, m.ubicacion,
+                bod.nombre AS nombre_bodega,
+                prov.proveedor AS nombre_proveedor,
+                m.costo_unitario, m.costo_total
+            FROM  movimientos_inventario m
+            JOIN  productos    p    ON p.id    = m.producto_id
+            LEFT  JOIN proveedores prov ON prov.id = m.proveedor_id
+            LEFT  JOIN bodegas     bod  ON bod.id  = m.bodega_id
+            WHERE m.fecha BETWEEN %s AND %s
+            ORDER BY m.fecha DESC, m.id DESC
+            """,
+            (fecha_desde, fecha_hasta),
+        )
+        rows = await cur.fetchall()
+
+    return [
+        {
+            "id": r[0], "producto_id": r[1], "nombre_producto": r[2],
+            "cantidad": r[3], "fecha": r[4].isoformat(),
+            "ubicacion": r[5], "nombre_bodega": r[6],
+            "nombre_proveedor": r[7],
+            "costo_unitario": float(r[8]) if r[8] is not None else None,
+            "costo_total":    float(r[9]) if r[9] is not None else None,
+        }
+        for r in rows
+    ]

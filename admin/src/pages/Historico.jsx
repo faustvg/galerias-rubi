@@ -137,6 +137,10 @@ export default function Historico() {
   // ── Estado de datos ──────────────────────────────────────────────────────
   const [resumen,   setResumen]   = useState(null)
   const [utilidad,  setUtilidad]  = useState(null)
+  // Parte 5 — Inversión en restock (KPI + nota de costos faltantes) y la
+  // lista de entradas del periodo para el panel derecho.
+  const [gastoRestock, setGastoRestock] = useState(null)
+  const [movimientos,  setMovimientos]  = useState(null)
   const [cargando,  setCargando]  = useState(true)
   const [error,     setError]     = useState(null)
 
@@ -150,16 +154,20 @@ export default function Historico() {
     setError(null)
     try {
       const qs = `fecha_desde=${periodo.desde}&fecha_hasta=${periodo.hasta}`
-      const [resR, utilR] = await Promise.all([
+      const [resR, utilR, gastoR, movR] = await Promise.all([
         apiFetch(`/dashboard/historico/resumen?${qs}`),
         apiFetch(`/dashboard/historico/utilidad?${qs}`),
+        apiFetch(`/dashboard/gasto-restock/detalle?${qs}`),
+        apiFetch(`/dashboard/movimientos-periodo?${qs}`),
       ])
-      if (resR.status === 401 || utilR.status === 401) {
+      if (resR.status === 401 || utilR.status === 401 || gastoR.status === 401 || movR.status === 401) {
         await logout(); navigate('/login'); return
       }
-      if (!resR.ok || !utilR.ok) throw new Error('No se pudo cargar el histórico.')
+      if (!resR.ok || !utilR.ok || !gastoR.ok || !movR.ok) throw new Error('No se pudo cargar el histórico.')
       setResumen(await resR.json())
       setUtilidad(await utilR.json())
+      setGastoRestock(await gastoR.json())
+      setMovimientos(await movR.json())
     } catch (err) {
       setError(err.message)
     } finally {
@@ -333,8 +341,11 @@ export default function Historico() {
 
       {!cargando && resumen && (
         <>
-          {/* ── Tarjetas KPI ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          {/* ── 1. Franja de KPIs — 3 existentes + Inversión en restock + Balance ──
+              Balance es el único que carga color por SIGNO (verde/rojo, ya
+              existentes en COLOR_MAP) — Inversión se queda neutral (gray):
+              es informativa, no lleva una señal de "bien/mal" por sí sola. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-2">
             <KpiCard
               etiqueta="Ventas en el periodo"
               valor={mxn(resumen.total_ventas)}
@@ -355,51 +366,45 @@ export default function Historico() {
                 : 'Ninguna en el periodo'}
               color={resumen.entregadas.length > 0 ? 'green' : 'gray'}
             />
+            <KpiCard
+              etiqueta="Inversión en restock"
+              valor={mxn(gastoRestock?.gasto_total ?? 0)}
+              sub={movimientos ? `${movimientos.filter((m) => m.costo_total != null).length} entrada${movimientos.filter((m) => m.costo_total != null).length !== 1 ? 's' : ''} con costo` : ''}
+              color="gray"
+            />
+            <KpiCard
+              etiqueta="Balance"
+              valor={mxn(resumen.total_ventas - (gastoRestock?.gasto_total ?? 0))}
+              sub="Ventas − inversión"
+              color={resumen.total_ventas - (gastoRestock?.gasto_total ?? 0) >= 0 ? 'green' : 'red'}
+            />
           </div>
 
-          {/* ── Lista de entregas completadas ── */}
-          {resumen.entregadas.length > 0 && (
-            <section className="mb-6">
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Entregas completadas en el periodo
-              </h2>
-              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                {resumen.entregadas.map((e, i) => (
-                  <Link
-                    key={e.folio}
-                    to={`/notas/${e.folio}`}
-                    className={`flex items-center justify-between gap-3 px-4 py-3
-                                hover:bg-amber-50 transition-colors ${
-                      i < resumen.entregadas.length - 1 ? 'border-b border-gray-100' : ''
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {e.etiqueta}
-                      </p>
-                      <p className="text-xs text-gray-400 font-mono">{e.folio}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs font-semibold text-green-600">
-                        {formatFecha(e.fecha_entrega)}
-                      </p>
-                      <p className="text-sm font-semibold text-gray-700">
-                        {mxn(e.total)}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          )}
+          {/* Costos faltantes: el total de Inversión/Balance NO es exacto si
+              hay entradas sin costo_unitario capturado — avisar en vez de
+              mostrar un número que parece preciso y no lo es. */}
+          <p className="text-xs text-gray-400 mb-6">
+            {gastoRestock && gastoRestock.entradas_sin_costo > 0
+              ? `⚠ ${gastoRestock.entradas_sin_costo} entrada${gastoRestock.entradas_sin_costo !== 1 ? 's' : ''} sin costo registrado en este periodo — no ${gastoRestock.entradas_sin_costo !== 1 ? 'están incluidas' : 'está incluida'} en Inversión ni en Balance.`
+              : ' '}
+          </p>
 
-          {/* ── Gráficas de utilidad ── */}
-          {utilidad && (
-            <GraficasUtilidad utilidad={utilidad} es_worker={es_worker} />
-          )}
+          {/* ── 2/3. Panel izquierdo (Notas) y derecho (gasto de restock) ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <div className="space-y-6">
+              <PanelEntregas entregadas={resumen.entregadas} />
+              {utilidad && <PanelUtilidadCategoria por_categoria={utilidad.por_categoria} />}
+            </div>
+            <PanelRestock movimientos={movimientos} gastoTotal={gastoRestock?.gasto_total} />
+          </div>
+
+          {/* ── Resto de desgloses de utilidad (proveedor/sucursal/vendedor) —
+              sin cambios de posición, la Parte 5 solo pidió mover "por
+              categoría" al panel izquierdo. ── */}
+          {utilidad && <GraficasUtilidadResto utilidad={utilidad} es_worker={es_worker} />}
 
           {/* Nota de estimación */}
-          <p className="text-xs text-gray-400 text-center mt-4 pb-4">
+          <p className="text-xs text-gray-400 text-center mt-6 pb-4">
             * Los márgenes son estimados (basados en costos base del catálogo).
           </p>
         </>
@@ -433,17 +438,139 @@ function KpiCard({ etiqueta, valor, sub, color = 'gray' }) {
 }
 
 
-// ── Gráficas de utilidad ──────────────────────────────────────────────────────
+// ── Panel izquierdo: entregas (Parte 5) ─────────────────────────────────────
+// Filas más compactas que antes (una línea, no dos) + "Ver todas" cuando hay
+// más de LIMITE_VISIBLE — el pedido explícito de Faust de "apretar" esta
+// lista, sin perder el detalle completo a un clic de distancia.
 
-function GraficasUtilidad({ utilidad, es_worker }) {
-  const { por_categoria, por_proveedor, por_sucursal, por_worker } = utilidad
-  const hayDatos = (arr) => arr && arr.some((d) => d.utilidad !== 0)
+const LIMITE_VISIBLE_ENTREGAS = 5
+
+function PanelEntregas({ entregadas }) {
+  const [expandido, setExpandido] = useState(false)
+  const visibles = expandido ? entregadas : entregadas.slice(0, LIMITE_VISIBLE_ENTREGAS)
 
   return (
-    <div className="space-y-6">
-      {hayDatos(por_categoria) && (
-        <GraficarBarras titulo="Utilidad por categoría"  datos={por_categoria} color="#f59e0b" />
+    <section>
+      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+        Entregas completadas en el periodo
+      </h2>
+      {entregadas.length === 0 ? (
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-6 text-center">
+          <p className="text-sm text-gray-400">Ninguna entrega completada en este periodo.</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          {visibles.map((e, i) => (
+            <Link
+              key={e.folio}
+              to={`/notas/${e.folio}`}
+              className={`flex items-center justify-between gap-3 px-3.5 py-2 text-sm
+                          hover:bg-amber-50 transition-colors ${
+                i < visibles.length - 1 ? 'border-b border-gray-100' : ''
+              }`}
+            >
+              <div className="min-w-0 flex items-baseline gap-2">
+                <p className="font-medium text-gray-900 truncate">{e.etiqueta}</p>
+                <span className="text-xs text-gray-400 shrink-0">{formatFecha(e.fecha_entrega)}</span>
+              </div>
+              <p className="font-semibold text-gray-700 shrink-0">{mxn(e.total)}</p>
+            </Link>
+          ))}
+          {entregadas.length > LIMITE_VISIBLE_ENTREGAS && (
+            <button
+              onClick={() => setExpandido((v) => !v)}
+              className="w-full text-center text-xs font-medium text-amber-700
+                         hover:bg-amber-50 py-2 border-t border-gray-100 transition-colors"
+            >
+              {expandido ? 'Ver menos' : `Ver todas (${entregadas.length})`}
+            </button>
+          )}
+        </div>
       )}
+    </section>
+  )
+}
+
+// ── Panel izquierdo: utilidad por categoría (Parte 5 — la única gráfica de
+// utilidad que el brief pidió mover a este panel; el resto se queda donde
+// estaba, ver GraficasUtilidadResto más abajo). ─────────────────────────────
+
+function PanelUtilidadCategoria({ por_categoria }) {
+  const hayDatos = por_categoria && por_categoria.some((d) => d.utilidad !== 0)
+  if (hayDatos) {
+    return <GraficarBarras titulo="Utilidad por categoría" datos={por_categoria} color="#f59e0b" />
+  }
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+        Utilidad por categoría
+      </h2>
+      <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-6 text-center">
+        <p className="text-sm text-gray-400">Sin datos de utilidad por categoría en este periodo.</p>
+      </div>
+    </section>
+  )
+}
+
+// ── Panel derecho: gasto de restock del periodo (Parte 5) ───────────────────
+// Reusa la forma de "Entradas registradas" de HistorialStock.jsx (fecha,
+// cantidad, proveedor, costo) pero para TODOS los productos del periodo a
+// la vez, con el total corrido arriba. Entradas sin costo se muestran con
+// "—" (mismo criterio que HistorialStock), nunca como $0.
+
+function PanelRestock({ movimientos, gastoTotal }) {
+  return (
+    <section>
+      <div className="flex items-baseline justify-between mb-3 gap-2">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+          Gasto de restock en el periodo
+        </h2>
+        {gastoTotal != null && (
+          <span className="text-sm font-bold text-gray-700 shrink-0">{mxn(gastoTotal)}</span>
+        )}
+      </div>
+      {!movimientos || movimientos.length === 0 ? (
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-6 text-center">
+          <p className="text-sm text-gray-400">Sin entradas de inventario en este periodo.</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden max-h-[420px] overflow-y-auto">
+          {movimientos.map((m, i) => (
+            <div
+              key={m.id}
+              className={`flex items-center justify-between gap-3 px-3.5 py-2 text-sm ${
+                i < movimientos.length - 1 ? 'border-b border-gray-100' : ''
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="font-medium text-gray-900 truncate">{m.nombre_producto}</p>
+                <p className="text-xs text-gray-400 truncate">
+                  {formatFecha(m.fecha)} · +{m.cantidad} · {m.nombre_proveedor || 'Sin proveedor'}
+                </p>
+              </div>
+              <p className={`font-semibold shrink-0 ${m.costo_total != null ? 'text-gray-700' : 'text-gray-300'}`}>
+                {m.costo_total != null ? mxn(m.costo_total) : '—'}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ── Resto de gráficas de utilidad (proveedor / sucursal / vendedor) ─────────
+// Posición sin cambios respecto a antes de la Parte 5 — solo "por categoría"
+// se movió al panel izquierdo (ver PanelUtilidadCategoria arriba).
+
+function GraficasUtilidadResto({ utilidad, es_worker }) {
+  const { por_proveedor, por_sucursal, por_worker } = utilidad
+  const hayDatos = (arr) => arr && arr.some((d) => d.utilidad !== 0)
+  const hayAlguna = hayDatos(por_proveedor) || hayDatos(por_sucursal) || (!es_worker && hayDatos(por_worker))
+  if (!hayAlguna) return null
+
+  return (
+    <div className="space-y-6 mt-6">
       {hayDatos(por_proveedor) && (
         <GraficarBarras titulo="Utilidad por proveedor"  datos={por_proveedor} color="#6366f1" />
       )}
@@ -452,14 +579,6 @@ function GraficasUtilidad({ utilidad, es_worker }) {
       )}
       {!es_worker && hayDatos(por_worker) && (
         <GraficarBarras titulo="Utilidad por vendedor"   datos={por_worker}    color="#10b981" />
-      )}
-      {!hayDatos(por_categoria) && !hayDatos(por_proveedor) && (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-8 text-center">
-          <p className="text-sm text-gray-400">
-            No hay datos de utilidad para este periodo.
-            Revisa que los productos tengan costos registrados.
-          </p>
-        </div>
       )}
     </div>
   )
