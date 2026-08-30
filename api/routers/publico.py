@@ -11,7 +11,11 @@ CAMPOS EXPUESTOS vs. CAMPOS INTERNOS
        id, nombre, fotos, categoria (nombre), categoria_id,
        color, material, descripcion, precio_efectivo,
        precio_base, descuento_pct (efectivo),
-       disponible_cdmx, precio_cdmx (None si esa sucursal oculta precio)
+       disponible_cdmx, precio_cdmx (None si esa sucursal oculta precio),
+       en_stock (booleano derivado de existencias > 0 — agregado para la
+       Tarea "estimado de entrega" en producto.html. Es un booleano, NO el
+       conteo real: satisface la regla de abajo de nunca exponer el valor
+       crudo de existencias)
 
   precio_efectivo / precio_base / precio_cdmx / descuento_pct son None (o 0
   para descuento_pct) cuando disponible_cdmx=true: regla de negocio — un
@@ -24,11 +28,11 @@ CAMPOS EXPUESTOS vs. CAMPOS INTERNOS
   el cliente debe verlo. El margen (costo) sigue siendo privado.
 
   ❌ NUNCA EXPUESTOS (internos del negocio):
-       costo          — margen de ganancia, información comercial privada
-       existencias    — stock interno, no relevante para el cliente
-       proveedor      — relación comercial interna
-       ubicaciones    — logística interna del taller
-       visible_en_sitio — flag interno, no sale al cliente
+       costo               — margen de ganancia, información comercial privada
+       existencias (crudo) — el conteo exacto no sale nunca, solo en_stock (bool)
+       proveedor           — relación comercial interna
+       ubicaciones         — logística interna del taller
+       visible_en_sitio    — flag interno, no sale al cliente
 
   El doble escudo:
     1. El SQL NO selecciona esos campos — nunca llegan al handler.
@@ -101,6 +105,7 @@ class ProductoPublico(BaseModel):
     # lista genérica de disponibilidad/precio por sucursal.
     disponible_cdmx:  bool             # true si el producto también se vende en CDMX (y esa sucursal está activa)
     precio_cdmx:      Optional[float]  # siempre None cuando disponible_cdmx=true (ver arriba); antes dependía solo de ocultar_precio_publico
+    en_stock:         bool             # existencias > 0 — booleano derivado, nunca el conteo real (ver cabecera del módulo)
 
 
 class CategoriaPublica(BaseModel):
@@ -150,7 +155,8 @@ class TestimonioPublico(BaseModel):
 #   r[0] id, r[1] nombre, r[2] fotos, r[3] categoria_id,
 #   r[4] categoria, r[5] color, r[6] material, r[7] descripcion,
 #   r[8] precio_efectivo, r[9] destacados, r[10] precio_base,
-#   r[11] descuento_pct (efectivo), r[12] disponible_cdmx, r[13] precio_cdmx
+#   r[11] descuento_pct (efectivo), r[12] disponible_cdmx, r[13] precio_cdmx,
+#   r[14] en_stock
 
 _SQL_BASE = """
     SELECT
@@ -172,7 +178,8 @@ _SQL_BASE = """
         COALESCE(p.descuento_pct, c.descuento_pct, 0) AS descuento_pct,
         (s_cdmx.id IS NOT NULL)                                        AS disponible_cdmx,
         CASE WHEN s_cdmx.id IS NOT NULL AND NOT s_cdmx.ocultar_precio_publico
-             THEN ps_cdmx.precio END                                   AS precio_cdmx
+             THEN ps_cdmx.precio END                                   AS precio_cdmx,
+        (p.existencias > 0)                                            AS en_stock
     FROM  productos   p
     LEFT  JOIN categorias c ON c.id = p.categoria_id
     LEFT  JOIN producto_sucursal ps_cdmx ON ps_cdmx.producto_id = p.id
@@ -215,6 +222,7 @@ def _fila_a_producto(r) -> dict:
         "descuento_pct":   0.0 if ocultar_precio_total else float(r[11] or 0),
         "disponible_cdmx": r[12],
         "precio_cdmx":     None if ocultar_precio_total else (float(r[13]) if r[13] is not None else None),
+        "en_stock":        r[14],
     }
 
 

@@ -455,6 +455,175 @@
       gap: .6rem;
     }
 
+    /* ── FRANJA DE CONFIANZA (envío / entrega / medidas) ──
+       Estructura inspirada en la referencia (ustudio.mx) — 3 columnas
+       compactas cerca del principio de la ficha. Colores y tipografía son
+       los propios del sitio, no los de la referencia. */
+    .feature-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid rgba(77,54,46,.14);
+      margin-bottom: 3rem;
+    }
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: .8rem;
+      padding: 1.3rem 1.4rem;
+      border-left: 1px solid rgba(77,54,46,.14);
+    }
+    .feature-item:first-child { border-left: none; }
+    .feature-item svg { flex-shrink: 0; color: var(--btn); margin-top: .15rem; }
+    .feature-texto strong {
+      display: block;
+      font-family: var(--sans);
+      font-size: .78rem;
+      font-weight: 500;
+      letter-spacing: .04em;
+      color: var(--text);
+      margin-bottom: .2rem;
+    }
+    .feature-texto span {
+      display: block;
+      font-size: .8rem;
+      color: var(--accent1);
+      line-height: 1.5;
+    }
+    .feature-texto .feature-link {
+      display: inline-block;
+      margin-top: .4rem;
+      font-size: .76rem;
+      font-weight: 500;
+      color: var(--btn);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    @media (max-width: 900px) {
+      .feature-strip {
+        grid-template-columns: none;
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+      }
+      .feature-item { flex: 0 0 84%; scroll-snap-align: start; }
+    }
+
+    /* ── ENTREGA ESTIMADA ── */
+    .entrega-estimada {
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      font-size: .82rem;
+      color: var(--accent1);
+      margin: -.6rem 0 1.7rem;
+    }
+    .entrega-estimada svg { flex-shrink: 0; color: var(--btn); }
+    .entrega-estimada strong { color: var(--text); font-weight: 500; }
+
+    /* ── ESPECIFICACIONES / LOGÍSTICA — debajo del layout principal,
+       la sección "más completa" de la referencia. ── */
+    .specs-section {
+      margin-top: 1rem;
+      padding-top: 3.5rem;
+      border-top: 1px solid rgba(77,54,46,.12);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+    }
+    .specs-tabla { width: 100%; border-collapse: collapse; }
+    .specs-tabla tr { border-bottom: 1px solid rgba(77,54,46,.1); }
+    .specs-tabla tr:last-child { border-bottom: none; }
+    .specs-tabla th, .specs-tabla td { text-align: left; padding: .7rem 0; font-size: .88rem; font-weight: 300; }
+    .specs-tabla th {
+      width: 40%;
+      font-weight: 400;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      font-size: .68rem;
+      color: var(--accent1);
+    }
+    .specs-vacio { font-size: .85rem; color: var(--accent2); }
+    .specs-pagos-label {
+      display: block;
+      font-size: .68rem;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--accent1);
+      margin-bottom: 1rem;
+    }
+    .specs-pagos-iconos { display: flex; flex-wrap: wrap; gap: .6rem; }
+    .specs-pago-badge {
+      display: inline-flex; align-items: center; gap: .45rem;
+      border: 1px solid rgba(77,54,46,.2);
+      color: var(--text); opacity: .8;
+      font-family: var(--sans); font-size: .64rem; font-weight: 400;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: .4rem .7rem;
+    }
+    .specs-pago-badge svg { flex-shrink: 0; }
+    @media (max-width: 900px) {
+      .specs-section { grid-template-columns: 1fr; gap: 2rem; }
+    }
+
+    /* ── CTAs extra en la ficha de sucursales (solo con stock) ── */
+    .ficha-cta-extra {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .6rem;
+      padding: 1rem 1.2rem 1.2rem;
+      border-top: 1px solid rgba(77,54,46,.12);
+    }
+    .ficha-cta-extra a {
+      flex: 1 1 auto;
+      text-align: center;
+      font-family: var(--sans);
+      font-size: .74rem;
+      font-weight: 500;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--btn);
+      border: 1px solid var(--btn);
+      padding: .7rem 1rem;
+      transition: background .2s, color .2s;
+      white-space: nowrap;
+    }
+    .ficha-cta-extra a:hover { background: var(--btn); color: var(--white); }
+
+    /* ── BOTÓN COMPARTIR ── */
+    .btn-compartir {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      background: none;
+      border: 1px solid rgba(77,54,46,.3);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: .76rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: .7rem 1.3rem;
+      cursor: pointer;
+      transition: border-color .2s, color .2s;
+    }
+    .btn-compartir:hover { border-color: var(--btn); color: var(--btn); }
+    .btn-compartir svg { flex-shrink: 0; }
+    .compartir-toast {
+      position: fixed;
+      bottom: 6.5rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      background: var(--text);
+      color: var(--white);
+      font-size: .8rem;
+      padding: .6rem 1.1rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s, transform .2s;
+      z-index: 300;
+    }
+    .compartir-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
     /* ── FOOTER ── */
     footer { background: var(--accent1); color: var(--white); padding: 5rem 5vw 2rem; }
     .footer-top { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 4rem; padding-bottom: 3.5rem; border-bottom: 1px solid rgba(255,255,255,.15); margin-bottom: 2.5rem; }
@@ -476,11 +645,6 @@
     .footer-social { display: flex; gap: 1rem; margin-top: 1.3rem; }
     .footer-social a { width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(250,248,245,.4); border-radius: 50%; color: var(--white); transition: background .2s, border-color .2s, transform .2s; }
     .footer-social a:hover { background: rgba(250,248,245,.18); border-color: rgba(250,248,245,.7); transform: translateY(-2px); }
-    .footer-pagos { padding-top: 2.5rem; margin-top: 2.5rem; border-top: 1px solid rgba(250,248,245,.18); }
-    .footer-pagos-label { display: block; font-size: .68rem; letter-spacing: .16em; text-transform: uppercase; opacity: .55; margin-bottom: 1rem; }
-    .footer-pagos-iconos { display: flex; flex-wrap: wrap; gap: .6rem; }
-    .pago-badge { display: inline-flex; align-items: center; gap: .45rem; border: 1px solid rgba(250,248,245,.3); color: var(--white); opacity: .85; font-family: var(--sans); font-size: .64rem; font-weight: 400; letter-spacing: .08em; text-transform: uppercase; padding: .4rem .7rem; }
-    .pago-badge svg { flex-shrink: 0; }
 
     /* ── WA BUBBLE ── */
     .wa-bubble { position: fixed; bottom: 2rem; right: 2rem; z-index: 999; width: 58px; height: 58px; background: #25D366; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 18px rgba(37,211,102,.45); transition: transform .2s, box-shadow .2s; cursor: pointer; }
@@ -504,6 +668,8 @@
       .logo { flex: 1; justify-content: center; }
       .logo img { height: 90px; }
       .prod-detalles { grid-template-columns: 1fr; }
+      .feature-item { flex: 0 0 92%; }
+      .ficha-cta-extra { flex-direction: column; }
       .footer-top  { grid-template-columns: 1fr; gap: 2.5rem; }
       .wa-bubble   { bottom: 1.2rem; right: 1.2rem; width: 52px; height: 52px; }
       .wa-bubble svg { width: 26px; height: 26px; }
@@ -572,6 +738,33 @@
       <span id="bc-nombre"></span>
     </div>
 
+    <!-- ══════════ FRANJA DE CONFIANZA (envío / entrega / medidas) ══════════ -->
+    <div class="feature-strip" id="feature-strip">
+      <div class="feature-item">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="7" width="14" height="10"/><path d="M15 10h4l3 3v4h-7z"/><circle cx="6" cy="19" r="2"/><circle cx="17.5" cy="19" r="2"/></svg>
+        <div class="feature-texto">
+          <strong>Envío</strong>
+          <span>El costo del envío depende de la localización</span>
+          <a class="feature-link" id="feature-envio-wa" href="#" target="_blank" rel="noopener">Preguntar costo →</a>
+        </div>
+      </div>
+      <div class="feature-item">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        <div class="feature-texto">
+          <strong>Entrega</strong>
+          <span>Se entrega armado</span>
+        </div>
+      </div>
+      <div class="feature-item">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16 16 3l5 5-13 13z"/><path d="m13 6 2 2M9 10l2 2M5 14l2 2"/></svg>
+        <div class="feature-texto">
+          <strong>Medidas</strong>
+          <span>Personalizables a tu espacio</span>
+          <a class="feature-link" id="feature-medidas-wa" href="#" target="_blank" rel="noopener">Cotizar medida →</a>
+        </div>
+      </div>
+    </div>
+
     <div class="producto-layout">
 
       <!-- Galería -->
@@ -619,6 +812,18 @@
             Usar mi ubicación
           </button>
           <p class="ficha-geo-mensaje" id="geo-mensaje" style="display:none"></p>
+
+          <!-- CTAs extra cuando el producto tiene stock (Tarea 3.6) -->
+          <div class="ficha-cta-extra" id="ficha-cta-extra" style="display:none">
+            <a id="cta-ver-persona" href="#" target="_blank" rel="noopener">Quiero verlo en persona</a>
+            <a id="cta-agendar-cita" href="#" target="_blank" rel="noopener">Agendar una cita</a>
+          </div>
+        </div>
+
+        <!-- Estimado de entrega (Tarea 3.2) — solo con stock; ver renderProducto() -->
+        <div class="entrega-estimada" id="entrega-estimada" style="display:none">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="15" height="11"/><path d="M18 10h3v8h-3"/><circle cx="7.5" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></svg>
+          <span id="entrega-estimada-texto"></span>
         </div>
 
         <div class="prod-detalles" id="prod-detalles" style="display:none"></div>
@@ -633,10 +838,48 @@
             </svg>
             Preguntar por este mueble
           </a>
+          <button type="button" class="btn-compartir" id="btn-compartir">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.4"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="19" r="2.4"/><path d="M8.1 10.7 15.9 6.3M8.1 13.3l7.8 4.4"/></svg>
+            Compartir
+          </button>
           <a href="index.html#coleccion" class="btn btn-outline">← Ver más muebles</a>
         </div>
       </div>
 
+    </div>
+
+    <!-- ══════════ ESPECIFICACIONES Y LOGÍSTICA (Tarea 3.3 / 3.5) ══════════ -->
+    <div class="specs-section" id="specs-section">
+      <div>
+        <p class="section-label">Especificaciones</p>
+        <table class="specs-tabla" id="specs-tabla"></table>
+        <p class="specs-vacio" id="specs-vacio" style="display:none">Especificaciones adicionales disponibles al cotizar por WhatsApp.</p>
+      </div>
+      <div>
+        <span class="specs-pagos-label">Métodos de pago</span>
+        <div class="specs-pagos-iconos">
+          <span class="specs-pago-badge">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            Visa
+          </span>
+          <span class="specs-pago-badge">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            Mastercard
+          </span>
+          <span class="specs-pago-badge">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            Amex
+          </span>
+          <span class="specs-pago-badge">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="1.5"/><circle cx="12" cy="12" r="2.5"/></svg>
+            Efectivo
+          </span>
+          <span class="specs-pago-badge">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>
+            Transferencia
+          </span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -696,31 +939,8 @@
     </div>
   </div>
 
-  <div class="footer-pagos">
-    <span class="footer-pagos-label">Métodos de pago</span>
-    <div class="footer-pagos-iconos">
-      <span class="pago-badge">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-        Visa
-      </span>
-      <span class="pago-badge">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-        Mastercard
-      </span>
-      <span class="pago-badge">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-        Amex
-      </span>
-      <span class="pago-badge">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="1.5"/><circle cx="12" cy="12" r="2.5"/></svg>
-        Efectivo
-      </span>
-      <span class="pago-badge">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>
-        Transferencia
-      </span>
-    </div>
-  </div>
+  <!-- Métodos de pago: relocados a la sección de especificaciones/logística
+       de la ficha de producto (Tarea 3.5) — no se duplican aquí también. -->
 
   <div class="footer-bottom">
     <p>© 2025 Muebles Rubí — San Pedro Tultepec, Lerma, Estado de México</p>
@@ -733,6 +953,7 @@
   <svg viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/></svg>
 </a>
 <div class="wa-tooltip">¡Escríbenos ahora!</div>
+<div class="compartir-toast" id="compartir-toast">Enlace copiado</div>
 
 <script>
   /* ─────────────────────────────────────────────────────────────
@@ -765,6 +986,16 @@
     }).format(valor)
   }
 
+  // Builder genérico de enlaces wa.me — un solo lugar para armar el link,
+  // reutilizado por todas las CTAs nuevas de esta página (franja de
+  // confianza, ficha de sucursales, "ver en persona"/"agendar cita").
+  // numero por defecto es waPrincipal (cargado dinámicamente desde
+  // /publico/sucursales, con el fallback estático de arriba si esa
+  // llamada falla).
+  function waLink(mensaje, numero = waPrincipal) {
+    return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`
+  }
+
   // CTA "Contáctanos para el precio" — usado en la ficha de sucursales para
   // CUALQUIER fila (San Pedro o CDMX) cuando el precio no se muestra.
   // Mismo peso visual que un precio real, nunca una nota al pie en gris.
@@ -772,10 +1003,8 @@
   // nunca generar wa.me/null — se deja como texto plano, sin link.
   function ctaContactoPrecio(nombreProd, numeroWa, sucursalNombre) {
     if (!numeroWa) return 'Contáctanos para el precio'
-    const msg = encodeURIComponent(
-      `Hola, me interesa el mueble: *${nombreProd}* en la sucursal ${sucursalNombre}. ¿Cuál es el precio y la disponibilidad?`
-    )
-    return `<a href="https://wa.me/${numeroWa}?text=${msg}" target="_blank" rel="noopener">Contáctanos para el precio</a>`
+    const msg = `Hola, me interesa el mueble: *${nombreProd}* en la sucursal ${sucursalNombre}. ¿Cuál es el precio y la disponibilidad?`
+    return `<a href="${waLink(msg, numeroWa)}" target="_blank" rel="noopener">Contáctanos para el precio</a>`
   }
 
   let fotosActuales = []
@@ -856,6 +1085,38 @@
     if (e.key === 'Escape')     cerrarLightbox()
     if (e.key === 'ArrowLeft')  lightboxAnterior()
     if (e.key === 'ArrowRight') lightboxSiguiente()
+  })
+
+  // Botón compartir (Tarea 3.4) — Web Share API con respaldo de copiar
+  // enlace. Solo comparte URL/título/texto del producto; no adjunta una
+  // imagen (evita depender de que el archivo en /uploads permita fetch
+  // cross-origin para armar el blob que pide la Web Share API nivel 2).
+  let toastTimeout = null
+  function mostrarToastCompartir(texto) {
+    const toast = document.getElementById('compartir-toast')
+    if (!toast) return
+    toast.textContent = texto
+    toast.classList.add('visible')
+    clearTimeout(toastTimeout)
+    toastTimeout = setTimeout(() => toast.classList.remove('visible'), 2200)
+  }
+
+  document.getElementById('btn-compartir').addEventListener('click', async () => {
+    const datos = {
+      title: nombreProducto || document.title,
+      text: `Mira este mueble: ${nombreProducto}`,
+      url: location.href,
+    }
+    if (navigator.share) {
+      try { await navigator.share(datos) } catch { /* usuario canceló, no hacer nada */ }
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(location.href)
+      mostrarToastCompartir('Enlace copiado')
+    } catch {
+      mostrarToastCompartir('No se pudo copiar el enlace')
+    }
   })
 
   function renderProducto(p) {
@@ -943,10 +1204,9 @@
     }
 
     // WhatsApp — mensaje con nombre del producto (San Pedro, sucursal principal)
-    const msg = encodeURIComponent(
+    document.getElementById('btn-wa').href = waLink(
       `Hola, me interesa el mueble: *${p.nombre}*. ¿Podrían darme más información y el precio actual?`
     )
-    document.getElementById('btn-wa').href = `https://wa.me/${waPrincipal}?text=${msg}`
 
     // Fila de CDMX en la ficha: si el producto NO está disponible en CDMX,
     // fila-cdmx se queda oculta y la ficha se ve solo con San Pedro. Si SÍ
@@ -964,6 +1224,65 @@
       document.getElementById('fila-cdmx').style.display = ''
       document.getElementById('fila-cdmx-precio').innerHTML =
         ctaContactoPrecio(p.nombre, waCdmx, nombreCdmx)
+    }
+
+    // Franja de confianza — CTAs de WhatsApp para envío y medidas (Tarea 3.1)
+    document.getElementById('feature-envio-wa').href =
+      waLink(`Hola, quiero saber el costo de envío de ${p.nombre} a mi zona`)
+    document.getElementById('feature-medidas-wa').href =
+      waLink(`Hola, quiero cotizar ${p.nombre} con medidas personalizadas`)
+
+    // Estimado de entrega (Tarea 3.2) — solo con stock (p.en_stock, booleano
+    // derivado de existencias > 0, nunca el conteo real — ver publico.py).
+    // Fechas reales calculadas en el momento, no las palabras "hoy"/"14 días".
+    // Para productos sin stock (hechos a pedido) el texto es un placeholder
+    // honesto pendiente de confirmar con Faust — ver reporte final.
+    const fmtFecha = (d) => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' })
+      .format(d).replace('.', '')
+    const entregaEl = document.getElementById('entrega-estimada')
+    const entregaTexto = document.getElementById('entrega-estimada-texto')
+    if (p.en_stock) {
+      const hoy = new Date()
+      const limite = new Date()
+      limite.setDate(hoy.getDate() + 14)
+      entregaTexto.innerHTML = `Entrega estimada: <strong>${fmtFecha(hoy)} – ${fmtFecha(limite)}</strong>`
+      entregaEl.style.display = ''
+    } else {
+      entregaTexto.textContent = 'Tiempo de entrega a cotizar según diseño'
+      entregaEl.style.display = ''
+    }
+
+    // Especificaciones (Tarea 3.3) — solo campos que ya existen en el
+    // modelo de datos (material, color, categoría). No hay campo de
+    // dimensiones estructurado todavía — no se inventa, se deja fuera.
+    const specsFilas = []
+    if (p.categoria) specsFilas.push(['Categoría', p.categoria])
+    if (p.material)  specsFilas.push(['Material', p.material])
+    if (p.color)     specsFilas.push(['Acabado', p.color])
+    const specsTabla = document.getElementById('specs-tabla')
+    const specsVacio = document.getElementById('specs-vacio')
+    if (specsFilas.length) {
+      specsTabla.innerHTML = specsFilas.map(([label, valor]) =>
+        `<tr><th>${label}</th><td>${valor}</td></tr>`
+      ).join('')
+      specsTabla.style.display = ''
+      specsVacio.style.display = 'none'
+    } else {
+      specsTabla.style.display = 'none'
+      specsVacio.style.display = ''
+    }
+
+    // CTAs extra cuando el producto tiene stock (Tarea 3.6) — junto a la
+    // ficha de sucursales, mismo número que el resto del sitio (waPrincipal).
+    const ctaExtra = document.getElementById('ficha-cta-extra')
+    if (p.en_stock) {
+      document.getElementById('cta-ver-persona').href =
+        waLink(`Hola, me gustaría ver ${p.nombre} en persona, ¿tienen disponible en su sucursal?`)
+      document.getElementById('cta-agendar-cita').href =
+        waLink(`Hola, quisiera agendar una cita para ver ${p.nombre}`)
+      ctaExtra.style.display = ''
+    } else {
+      ctaExtra.style.display = 'none'
     }
 
     // Galería
