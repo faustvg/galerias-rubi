@@ -499,14 +499,11 @@
       text-underline-offset: 2px;
     }
     @media (max-width: 900px) {
-      .feature-strip {
-        grid-template-columns: none;
-        display: flex;
-        overflow-x: auto;
-        scroll-snap-type: x proximity;
-        -webkit-overflow-scrolling: touch;
-      }
-      .feature-item { flex: 0 0 84%; scroll-snap-align: start; }
+      /* Ronda 2 UX: apilado vertical en vez de scroll horizontal — los
+         3 puntos deben verse sin necesidad de deslizar. */
+      .feature-strip { grid-template-columns: 1fr; }
+      .feature-item { border-left: none; border-top: 1px solid rgba(77,54,46,.14); }
+      .feature-item:first-child { border-top: none; }
     }
 
     /* ── ENTREGA ESTIMADA ── */
@@ -566,27 +563,29 @@
       .specs-section { grid-template-columns: 1fr; gap: 2rem; }
     }
 
-    /* ── CTAs extra en la ficha de sucursales (solo con stock) ── */
+    /* ── CTA de contacto (ronda 2 UX) ──
+       Antes eran 2 botones dentro de #ficha-sucursales, visibles solo con
+       stock. Ahora es 1 solo botón, y vive FUERA de #ficha-sucursales a
+       propósito: esa ficha puede quedarse oculta si el producto no cae en
+       ninguna de sus dos ramas de precio (ver renderProducto()) — sacar la
+       CTA de ahí garantiza que todo producto tenga siempre un contacto
+       visible, sin depender de esa lógica de precio. */
     .ficha-cta-extra {
       display: flex;
-      flex-wrap: wrap;
-      gap: .6rem;
-      padding: 1rem 1.2rem 1.2rem;
-      border-top: 1px solid rgba(77,54,46,.12);
+      margin: 0 0 1.8rem;
+      border: 1px solid rgba(77,54,46,.16);
     }
     .ficha-cta-extra a {
       flex: 1 1 auto;
       text-align: center;
       font-family: var(--sans);
-      font-size: .74rem;
+      font-size: .78rem;
       font-weight: 500;
-      letter-spacing: .05em;
+      letter-spacing: .06em;
       text-transform: uppercase;
       color: var(--btn);
-      border: 1px solid var(--btn);
-      padding: .7rem 1rem;
+      padding: .95rem 1rem;
       transition: background .2s, color .2s;
-      white-space: nowrap;
     }
     .ficha-cta-extra a:hover { background: var(--btn); color: var(--white); }
 
@@ -668,8 +667,6 @@
       .logo { flex: 1; justify-content: center; }
       .logo img { height: 90px; }
       .prod-detalles { grid-template-columns: 1fr; }
-      .feature-item { flex: 0 0 92%; }
-      .ficha-cta-extra { flex-direction: column; }
       .footer-top  { grid-template-columns: 1fr; gap: 2.5rem; }
       .wa-bubble   { bottom: 1.2rem; right: 1.2rem; width: 52px; height: 52px; }
       .wa-bubble svg { width: 26px; height: 26px; }
@@ -738,33 +735,6 @@
       <span id="bc-nombre"></span>
     </div>
 
-    <!-- ══════════ FRANJA DE CONFIANZA (envío / entrega / medidas) ══════════ -->
-    <div class="feature-strip" id="feature-strip">
-      <div class="feature-item">
-        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="7" width="14" height="10"/><path d="M15 10h4l3 3v4h-7z"/><circle cx="6" cy="19" r="2"/><circle cx="17.5" cy="19" r="2"/></svg>
-        <div class="feature-texto">
-          <strong>Envío</strong>
-          <span>El costo del envío depende de la localización</span>
-          <a class="feature-link" id="feature-envio-wa" href="#" target="_blank" rel="noopener">Preguntar costo →</a>
-        </div>
-      </div>
-      <div class="feature-item">
-        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        <div class="feature-texto">
-          <strong>Entrega</strong>
-          <span>Se entrega armado</span>
-        </div>
-      </div>
-      <div class="feature-item">
-        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16 16 3l5 5-13 13z"/><path d="m13 6 2 2M9 10l2 2M5 14l2 2"/></svg>
-        <div class="feature-texto">
-          <strong>Medidas</strong>
-          <span>Personalizables a tu espacio</span>
-          <a class="feature-link" id="feature-medidas-wa" href="#" target="_blank" rel="noopener">Cotizar medida →</a>
-        </div>
-      </div>
-    </div>
-
     <div class="producto-layout">
 
       <!-- Galería -->
@@ -812,12 +782,13 @@
             Usar mi ubicación
           </button>
           <p class="ficha-geo-mensaje" id="geo-mensaje" style="display:none"></p>
+        </div>
 
-          <!-- CTAs extra cuando el producto tiene stock (Tarea 3.6) -->
-          <div class="ficha-cta-extra" id="ficha-cta-extra" style="display:none">
-            <a id="cta-ver-persona" href="#" target="_blank" rel="noopener">Quiero verlo en persona</a>
-            <a id="cta-agendar-cita" href="#" target="_blank" rel="noopener">Agendar una cita</a>
-          </div>
+        <!-- CTA de contacto — un solo botón, en TODOS los productos (con o
+             sin stock). Fuera de #ficha-sucursales a propósito, ver el
+             comentario junto a la regla .ficha-cta-extra más arriba. -->
+        <div class="ficha-cta-extra" id="ficha-cta-extra">
+          <a id="cta-contacto" href="#" target="_blank" rel="noopener">Ver en persona / agendar cita</a>
         </div>
 
         <!-- Estimado de entrega (Tarea 3.2) — solo con stock; ver renderProducto() -->
@@ -831,13 +802,6 @@
         <p class="prod-descripcion" id="prod-descripcion" style="display:none"></p>
 
         <div class="prod-acciones">
-          <a id="btn-wa" href="#" class="btn" target="_blank" rel="noopener">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-              <path d="M11.999 2C6.477 2 2 6.484 2 12.017c0 1.987.528 3.851 1.448 5.454L2 22l4.644-1.418A9.945 9.945 0 0012 22c5.522 0 10-4.478 10-10S17.522 2 12 2z"/>
-            </svg>
-            Preguntar por este mueble
-          </a>
           <button type="button" class="btn-compartir" id="btn-compartir">
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.4"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="19" r="2.4"/><path d="M8.1 10.7 15.9 6.3M8.1 13.3l7.8 4.4"/></svg>
             Compartir
@@ -846,6 +810,36 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- ══════════ FRANJA DE CONFIANZA (envío / entrega / medidas) ══════════
+         Ronda 2 UX: movida a DESPUÉS del bloque principal del producto
+         (galería + precio/sucursales + descripción) — antes empujaba el
+         producto bajo el pliegue. Contenido sin cambios. -->
+    <div class="feature-strip" id="feature-strip">
+      <div class="feature-item">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="7" width="14" height="10"/><path d="M15 10h4l3 3v4h-7z"/><circle cx="6" cy="19" r="2"/><circle cx="17.5" cy="19" r="2"/></svg>
+        <div class="feature-texto">
+          <strong>Envío</strong>
+          <span>El costo del envío depende de la localización</span>
+          <a class="feature-link" id="feature-envio-wa" href="#" target="_blank" rel="noopener">Preguntar costo →</a>
+        </div>
+      </div>
+      <div class="feature-item">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        <div class="feature-texto">
+          <strong>Entrega</strong>
+          <span>Se entrega armado</span>
+        </div>
+      </div>
+      <div class="feature-item">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16 16 3l5 5-13 13z"/><path d="m13 6 2 2M9 10l2 2M5 14l2 2"/></svg>
+        <div class="feature-texto">
+          <strong>Medidas</strong>
+          <span>Personalizables a tu espacio</span>
+          <a class="feature-link" id="feature-medidas-wa" href="#" target="_blank" rel="noopener">Cotizar medida →</a>
+        </div>
+      </div>
     </div>
 
     <!-- ══════════ ESPECIFICACIONES Y LOGÍSTICA (Tarea 3.3 / 3.5) ══════════ -->
@@ -1203,11 +1197,6 @@
       el.style.display = ''
     }
 
-    // WhatsApp — mensaje con nombre del producto (San Pedro, sucursal principal)
-    document.getElementById('btn-wa').href = waLink(
-      `Hola, me interesa el mueble: *${p.nombre}*. ¿Podrían darme más información y el precio actual?`
-    )
-
     // Fila de CDMX en la ficha: si el producto NO está disponible en CDMX,
     // fila-cdmx se queda oculta y la ficha se ve solo con San Pedro. Si SÍ
     // está disponible, el backend ya garantiza precio_cdmx=null (regla de
@@ -1272,18 +1261,12 @@
       specsVacio.style.display = ''
     }
 
-    // CTAs extra cuando el producto tiene stock (Tarea 3.6) — junto a la
-    // ficha de sucursales, mismo número que el resto del sitio (waPrincipal).
-    const ctaExtra = document.getElementById('ficha-cta-extra')
-    if (p.en_stock) {
-      document.getElementById('cta-ver-persona').href =
-        waLink(`Hola, me gustaría ver ${p.nombre} en persona, ¿tienen disponible en su sucursal?`)
-      document.getElementById('cta-agendar-cita').href =
-        waLink(`Hola, quisiera agendar una cita para ver ${p.nombre}`)
-      ctaExtra.style.display = ''
-    } else {
-      ctaExtra.style.display = 'none'
-    }
+    // CTA de contacto general — un solo botón, en TODOS los productos, con
+    // o sin stock (ronda 2 UX; antes eran 2 botones solo-con-stock). Mismo
+    // número que el resto del sitio (waPrincipal).
+    document.getElementById('cta-contacto').href = waLink(
+      `Hola, me interesa "${p.nombre}" y me gustaría verlo en persona o agendar una cita, ¿me ayudan?`
+    )
 
     // Galería
     fotosActuales = (p.fotos || []).filter(r => fotoUrl(r))
