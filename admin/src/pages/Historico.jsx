@@ -132,6 +132,10 @@ export default function Historico() {
   // lista de entradas del periodo para el panel derecho.
   const [gastoRestock, setGastoRestock] = useState(null)
   const [movimientos,  setMovimientos]  = useState(null)
+  // Parte B ronda 3 — Cobros del periodo: dinero que entró de verdad,
+  // sumado por pagos.fecha (ver dashboard.py). Independiente de Ventas
+  // en el periodo (que sigue siendo fecha_pedido) y Entregas (fecha_entrega).
+  const [cobros, setCobros] = useState(null)
   const [cargando,  setCargando]  = useState(true)
   const [error,     setError]     = useState(null)
 
@@ -145,20 +149,24 @@ export default function Historico() {
     setError(null)
     try {
       const qs = `fecha_desde=${periodo.desde}&fecha_hasta=${periodo.hasta}`
-      const [resR, utilR, gastoR, movR] = await Promise.all([
+      const [resR, utilR, gastoR, movR, cobrosR] = await Promise.all([
         apiFetch(`/dashboard/historico/resumen?${qs}`),
         apiFetch(`/dashboard/historico/utilidad?${qs}`),
         apiFetch(`/dashboard/gasto-restock/detalle?${qs}`),
         apiFetch(`/dashboard/movimientos-periodo?${qs}`),
+        apiFetch(`/dashboard/cobros-periodo?${qs}`),
       ])
-      if (resR.status === 401 || utilR.status === 401 || gastoR.status === 401 || movR.status === 401) {
+      if ([resR, utilR, gastoR, movR, cobrosR].some((r) => r.status === 401)) {
         await logout(); navigate('/login'); return
       }
-      if (!resR.ok || !utilR.ok || !gastoR.ok || !movR.ok) throw new Error('No se pudo cargar el histórico.')
+      if (!resR.ok || !utilR.ok || !gastoR.ok || !movR.ok || !cobrosR.ok) {
+        throw new Error('No se pudo cargar el histórico.')
+      }
       setResumen(await resR.json())
       setUtilidad(await utilR.json())
       setGastoRestock(await gastoR.json())
       setMovimientos(await movR.json())
+      setCobros(await cobrosR.json())
     } catch (err) {
       setError(err.message)
     } finally {
@@ -387,6 +395,13 @@ export default function Historico() {
             <PanelRestock movimientos={movimientos} gastoTotal={gastoRestock?.gasto_total} />
           </div>
 
+          {/* ── Cobros del periodo (Parte B, ronda 3) — dinero que entró de
+              verdad en el periodo, por fecha de pago. Sección propia a lo
+              ancho: es un concepto distinto tanto de "Notas" (izquierda)
+              como de "Restock" (derecha), no encaja limpio en ninguno de
+              los dos paneles. ── */}
+          {cobros && <PanelCobros cobros={cobros} />}
+
           {/* ── Resto de desgloses de utilidad (proveedor/sucursal/vendedor) —
               sin cambios de posición, la Parte 5 solo pidió mover "por
               categoría" al panel izquierdo. ── */}
@@ -503,6 +518,49 @@ function PanelRestock({ movimientos, gastoTotal }) {
             ))}
           </ListaCard>
         </div>
+      )}
+    </section>
+  )
+}
+
+// ── Cobros del periodo (Parte B, ronda 3) ────────────────────────────────────
+// Un renglón por PAGO (no por nota) — la misma nota puede aparecer más de
+// una vez si recibió más de un abono en el periodo. "Pedido abierto"
+// (fecha_entrega IS NULL y no cancelada) se marca con una etiqueta junto
+// al nombre, para distinguir a simple vista un cobro de un pedido que ya
+// se entregó de uno que sigue abierto — ver dashboard.py para la lógica.
+
+function PanelCobros({ cobros }) {
+  const { cobrado_total, pagos } = cobros
+  return (
+    <section className="mt-6">
+      <div className="flex items-baseline justify-between mb-3 gap-2">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+          Cobros del periodo
+        </h2>
+        <span className="text-sm font-bold text-gray-900 shrink-0">{mxn(cobrado_total)}</span>
+      </div>
+      {pagos.length === 0 ? (
+        <ListaVacia mensaje="Sin cobros registrados en este periodo." />
+      ) : (
+        <ListaCard>
+          {pagos.map((p, i) => (
+            <FilaLista
+              key={p.id}
+              to={`/notas/${p.folio}`}
+              titulo={p.etiqueta}
+              badge={p.pedido_abierto && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide
+                                  text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full shrink-0">
+                  Pedido abierto
+                </span>
+              )}
+              meta={`${formatFecha(p.fecha)} · ${p.metodo}${p.tipo ? ` · ${p.tipo}` : ''}`}
+              derecha={mxn(p.monto)}
+              ultima={i === pagos.length - 1}
+            />
+          ))}
+        </ListaCard>
       )}
     </section>
   )

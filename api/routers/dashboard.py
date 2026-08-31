@@ -930,3 +930,82 @@ async def movimientos_periodo(
         }
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/cobros-periodo
+# ---------------------------------------------------------------------------
+# "Cobros del periodo" (Parte B, ronda 3) — dinero que REALMENTE entró en el
+# periodo, sumado por pagos.fecha (cuándo se cobró), no por notas.fecha_pedido
+# (cuándo se levantó el pedido) ni notas.fecha_entrega (cuándo se entregó).
+# Esa es la brecha real que tenía el dashboard: un pedido abierto hace
+# semanas que recibe un abono HOY no aparecía en ningún total de "hoy",
+# porque nada sumaba por fecha de pago. pagos.fecha ya traía justo ese dato.
+#
+# "Pedido abierto" (derivado, sin migración): anticipo > 0 AND fecha_entrega
+# IS NULL AND estatus != 'Cancelado'. anticipo > 0 es redundante en la
+# práctica aquí (si esta fila de pago existe, ya hay al menos ese abono),
+# pero se deja explícito en el WHERE/SELECT por si algún día se listan
+# pagos con monto 0 o se cambia el criterio.
+# ---------------------------------------------------------------------------
+
+@router.get("/cobros-periodo")
+async def cobros_periodo(
+    fecha_desde: date = Query(..., description="Inicio del periodo (inclusive)"),
+    fecha_hasta: date = Query(..., description="Fin del periodo (inclusive)"),
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    es_worker = usuario.rol == "worker"
+
+    _SQL = """
+        SELECT
+            pg.id, pg.folio_pedido, pg.fecha, pg.monto, pg.metodo, pg.tipo,
+            n.fecha_pedido, n.fecha_entrega, n.estatus, n.anticipo,
+            (SELECT COUNT(*) FROM partidas par WHERE par.folio_pedido = n.folio)
+                AS num_partidas,
+            (
+                SELECT COALESCE(pr.nombre, 'Artículo')
+                FROM   partidas par
+                LEFT   JOIN productos pr ON pr.id = par.producto_id
+                WHERE  par.folio_pedido = n.folio
+                ORDER  BY par.precio_unitario DESC, par.id
+                LIMIT  1
+            ) AS nombre_ancla
+        FROM  pagos pg
+        JOIN  notas n ON n.folio = pg.folio_pedido
+        WHERE pg.fecha BETWEEN %s AND %s
+    """
+    params: list = [fecha_desde, fecha_hasta]
+    if es_worker:
+        _SQL += " AND n.usuario_id = %s"
+        params.append(usuario.id)
+    _SQL += " ORDER BY pg.fecha DESC, pg.id DESC"
+
+    async with conn.cursor() as cur:
+        await cur.execute(_SQL, params)
+        rows = await cur.fetchall()
+
+    def _pedido_abierto(fecha_entrega, estatus, anticipo) -> bool:
+        return fecha_entrega is None and estatus != "Cancelado" and float(anticipo or 0) > 0
+
+    # cobrado_total se suma aquí, no en un segundo SELECT: rows ya trae
+    # exactamente las filas filtradas por fecha (y por usuario_id si es
+    # worker) — sumar en Python evita repetir ese mismo filtro dos veces
+    # y que ambos números puedan desincronizarse si alguno cambia después.
+    return {
+        "cobrado_total": sum(float(r[3]) for r in rows),
+        "pagos": [
+            {
+                "id":              r[0],
+                "folio":           r[1],
+                "fecha":           r[2].isoformat(),
+                "monto":           float(r[3]),
+                "metodo":          r[4],
+                "tipo":            r[5],
+                "etiqueta":        _armar_etiqueta(r[11], r[10], r[6], r[1], r[7]),
+                "pedido_abierto":  _pedido_abierto(r[7], r[8], r[9]),
+            }
+            for r in rows
+        ],
+    }

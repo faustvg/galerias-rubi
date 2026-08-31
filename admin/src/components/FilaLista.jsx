@@ -17,10 +17,14 @@
  * `derecha`/`derechaSub` aceptan cualquier ReactNode, no solo texto plano
  * — así una fila puede colorear su propio valor (ej. la fecha de entrega
  * próxima en rojo si es urgente) sin que eso rompa el layout compartido.
+ *
+ * `badge` (opcional) — una etiqueta corta junto al título, ej. "Pedido
+ * abierto" en Cobros del periodo. Va FUERA del <p> con truncate del
+ * título para no arriesgarse a que el elipsis se coma la etiqueta.
  */
 import { Link } from 'react-router-dom'
 
-export function FilaLista({ to, titulo, meta, derecha, derechaSub, ultima = false }) {
+export function FilaLista({ to, titulo, meta, badge, derecha, derechaSub, ultima = false }) {
   const clase = `flex items-center justify-between gap-3 px-3.5 py-2 text-sm ${
     to ? 'hover:bg-amber-50 transition-colors' : ''
   } ${!ultima ? 'border-b border-gray-100' : ''}`
@@ -29,6 +33,7 @@ export function FilaLista({ to, titulo, meta, derecha, derechaSub, ultima = fals
     <>
       <div className="min-w-0 flex items-baseline gap-2">
         <p className="font-medium text-gray-900 truncate">{titulo}</p>
+        {badge}
         {meta && <span className="text-xs text-gray-400 shrink-0 truncate">{meta}</span>}
       </div>
       <div className="text-right shrink-0">
