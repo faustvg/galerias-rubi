@@ -489,7 +489,13 @@ function PanelUtilidadCategoria({ por_categoria }) {
 // proveedor debajo), la única lista de la página con esa densidad distinta.
 // Entradas sin costo se muestran con "—" en gris (nunca como $0).
 
+const LIMITE_VISIBLE_RESTOCK = 5
+
 function PanelRestock({ movimientos, gastoTotal }) {
+  const [expandido, setExpandido] = useState(false)
+  const lista = movimientos || []
+  const visibles = expandido ? lista : lista.slice(0, LIMITE_VISIBLE_RESTOCK)
+
   return (
     <section>
       <div className="flex items-baseline justify-between mb-3 gap-2">
@@ -500,24 +506,31 @@ function PanelRestock({ movimientos, gastoTotal }) {
           <span className="text-sm font-bold text-gray-900 shrink-0">{mxn(gastoTotal)}</span>
         )}
       </div>
-      {!movimientos || movimientos.length === 0 ? (
+      {lista.length === 0 ? (
         <ListaVacia mensaje="Sin entradas de inventario en este periodo." />
       ) : (
-        <div className="max-h-[420px] overflow-y-auto rounded-2xl">
-          <ListaCard>
-            {movimientos.map((m, i) => (
-              <FilaLista
-                key={m.id}
-                titulo={m.nombre_producto}
-                meta={`${formatFecha(m.fecha)} · +${m.cantidad} · ${m.nombre_proveedor || 'Sin proveedor'}`}
-                derecha={m.costo_total != null
-                  ? mxn(m.costo_total)
-                  : <span className="text-gray-300">—</span>}
-                ultima={i === movimientos.length - 1}
-              />
-            ))}
-          </ListaCard>
-        </div>
+        <ListaCard>
+          {visibles.map((m, i) => (
+            <FilaLista
+              key={m.id}
+              titulo={m.nombre_producto}
+              meta={`${formatFecha(m.fecha)} · +${m.cantidad} · ${m.nombre_proveedor || 'Sin proveedor'}`}
+              derecha={m.costo_total != null
+                ? mxn(m.costo_total)
+                : <span className="text-gray-300">—</span>}
+              ultima={i === visibles.length - 1}
+            />
+          ))}
+          {lista.length > LIMITE_VISIBLE_RESTOCK && (
+            <button
+              onClick={() => setExpandido((v) => !v)}
+              className="w-full text-center text-xs font-medium text-amber-700
+                         hover:bg-amber-50 py-2 border-t border-gray-100 transition-colors"
+            >
+              {expandido ? 'Ver menos' : `Ver todas (${lista.length})`}
+            </button>
+          )}
+        </ListaCard>
       )}
     </section>
   )
