@@ -803,6 +803,23 @@ function FilaPartida({ partida, numero, productos, onSeleccionarProducto, onChan
 // "Cantidad Pagada" de solo lectura y para calcular Resta — así ese número
 // siempre refleja los pagos de verdad, sin esperar a que el trigger de la
 // migración 015 esté aplicado en el servidor.
+//
+// ── RONDA 4, #1: se quitó el paso de confirmación ("+ Agregar pago" →
+// resumen → botón "Confirmar" aparte) ────────────────────────────────────
+// No era un bug de red ni del backend (verificado en vivo: la confirmación
+// SÍ mostraba el resumen y SÍ mandaba el POST al hacer clic en "Confirmar"
+// — el flujo funcionaba exactamente como estaba escrito). El problema era
+// que ahora que Pagos es la ÚNICA forma de registrar cobros (desde que se
+// quitó "Cantidad Pagada" editable), el clic en "+ Agregar pago" por sí
+// solo YA NO hacía nada visible más que mostrar una segunda caja — y en
+// uso real, quien lo capturaba se quedaba en ese primer clic sin notar que
+// faltaba un segundo paso, así que el pago nunca se mandaba: cero errores
+// (nada falló, nada se intentó) y "Cantidad Pagada" se quedaba en $0.
+// Agregar un pago no es una acción destructiva (a diferencia de borrar
+// movimientos de inventario, que sí usa ConfirmDialog): ya existe un botón
+// ✕ para corregir un pago mal capturado, así que la doble confirmación
+// protegía contra un error barato de deshacer a cambio de un costo real
+// de fricción. Un solo clic ahora agrega el pago directamente.
 
 const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia']
 const TIPOS_PAGO   = ['anticipo', 'liquidacion', 'abono']
@@ -817,12 +834,6 @@ function PagosEditor({ folio, onTotalChange }) {
   const [metodo, setMetodo] = useState('efectivo')
   const [tipo,   setTipo]   = useState('')
   const [monto,  setMonto]  = useState('')
-
-  // Gate de confirmación: "+ Agregar pago" NO postea de inmediato — solo
-  // muestra un resumen con un botón "Confirmar" explícito. Evita que un
-  // clic accidental (o presionar Enter en el input de monto) registre un
-  // pago sin que quien lo captura lo haya confirmado a propósito.
-  const [confirmando, setConfirmando] = useState(false)
 
   async function cargarPagos() {
     setCargando(true)
@@ -840,21 +851,19 @@ function PagosEditor({ folio, onTotalChange }) {
 
   useEffect(() => { cargarPagos() }, [folio])
 
-  // Paso 1: pedir confirmación — no llama al backend todavía.
-  function handlePedirConfirmacion() {
+  // Un solo paso: valida y registra el pago de inmediato (ver comentario
+  // de cabecera — ronda 4, #1). `guardando` sigue evitando un doble envío
+  // si alguien hace doble clic mientras la petición está en curso.
+  async function handleAgregarPago() {
     const montoNum = Number(monto)
     if (!montoNum || montoNum <= 0) return
-    setConfirmando(true)
-  }
 
-  // Paso 2: solo aquí se registra el pago de verdad.
-  async function handleConfirmar() {
     setGuardando(true)
     setError(null)
     try {
       const res = await apiFetch(`/notas/${folio}/pagos`, {
         method: 'POST',
-        body: JSON.stringify({ metodo, tipo: tipo || null, monto: Number(monto) }),
+        body: JSON.stringify({ metodo, tipo: tipo || null, monto: montoNum }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -862,17 +871,12 @@ function PagosEditor({ folio, onTotalChange }) {
       }
       setMonto('')
       setTipo('')
-      setConfirmando(false)
       await cargarPagos()
     } catch (err) {
       setError(err.message)
     } finally {
       setGuardando(false)
     }
-  }
-
-  function handleCancelarConfirmacion() {
-    setConfirmando(false)
   }
 
   async function handleEliminar(id) {
@@ -939,13 +943,13 @@ function PagosEditor({ folio, onTotalChange }) {
         </div>
       )}
 
-      {/* Fila para agregar un pago nuevo — deshabilitada mientras se confirma,
-          para que el resumen de abajo no quede desincronizado de los campos. */}
+      {/* Fila para agregar un pago nuevo — deshabilitada mientras se guarda,
+          para no dejar editar los campos a medio envío. */}
       <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
         <select
           value={metodo}
           onChange={e => setMetodo(e.target.value)}
-          disabled={confirmando}
+          disabled={guardando}
           className={estiloInput}
         >
           {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
@@ -953,7 +957,7 @@ function PagosEditor({ folio, onTotalChange }) {
         <select
           value={tipo}
           onChange={e => setTipo(e.target.value)}
-          disabled={confirmando}
+          disabled={guardando}
           className={estiloInput}
         >
           <option value="">— Tipo (opcional) —</option>
@@ -965,54 +969,24 @@ function PagosEditor({ folio, onTotalChange }) {
           step="any"
           value={monto}
           onChange={e => setMonto(e.target.value)}
-          disabled={confirmando}
+          disabled={guardando}
           placeholder="Monto"
           className={estiloInput}
         />
       </div>
 
-      {!confirmando ? (
-        <button
-          type="button"
-          onClick={handlePedirConfirmacion}
-          disabled={!monto}
-          className="w-full py-2.5 border-2 border-dashed border-amber-300 rounded-xl
-                     text-sm font-medium text-amber-700 hover:bg-amber-50
-                     active:bg-amber-100 disabled:opacity-50 transition-colors"
-        >
-          + Agregar pago
-        </button>
-      ) : (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2.5">
-          <p className="text-xs text-amber-900">
-            ¿Registrar <span className="font-semibold capitalize">{metodo}</span>
-            {tipo && <> · {tipo}</>} por{' '}
-            <span className="font-semibold">
-              ${Number(monto).toLocaleString('es-MX', { minimumFractionDigits: 0 })}
-            </span>?
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleConfirmar}
-              disabled={guardando}
-              className="flex-1 py-2 bg-amber-600 text-white text-sm font-semibold
-                         rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
-            >
-              {guardando ? 'Guardando…' : 'Confirmar'}
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelarConfirmacion}
-              disabled={guardando}
-              className="flex-1 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100
-                         rounded-lg disabled:opacity-50 transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Un solo clic registra el pago (ver comentario de cabecera —
+          ronda 4, #1: el paso de confirmación aparte se quitó). */}
+      <button
+        type="button"
+        onClick={handleAgregarPago}
+        disabled={!monto || guardando}
+        className="w-full py-2.5 border-2 border-dashed border-amber-300 rounded-xl
+                   text-sm font-medium text-amber-700 hover:bg-amber-50
+                   active:bg-amber-100 disabled:opacity-50 transition-colors"
+      >
+        {guardando ? 'Guardando…' : '+ Agregar pago'}
+      </button>
     </div>
   )
 }
