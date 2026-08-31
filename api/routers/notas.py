@@ -101,7 +101,12 @@ class NotaCreate(BaseModel):
     # la tabla no tiene CHECK constraint en estatus, así que la API es el guardián.
     estatus:         Literal["Presupuesto", "En proceso", "Entregado"] = "Presupuesto"
     total:           float  = Field(0.0, ge=0)
-    anticipo:        float  = Field(0.0, ge=0)
+    # anticipo NO se acepta aquí a propósito (ronda 3, Parte B): ya no es un
+    # campo que el vendedor escriba a mano — se deriva de la tabla pagos
+    # (ver migración 015, trg_recalcular_anticipo). Una nota nueva arranca
+    # en anticipo=0 (default de columna); el primer pago se registra
+    # después de crear el pedido, vía POST /notas/{folio}/pagos, igual que
+    # existencias no se acepta en los endpoints de productos.
     # Enlace estructurado al usuario que hizo la venta (ver NOTA en schema.sql).
     # Reemplaza al viejo campo de texto libre: el nombre mostrado siempre se
     # resuelve en vivo desde usuarios.nombre, así que un cambio de nombre se
@@ -131,7 +136,11 @@ class NotaUpdate(BaseModel):
     fecha_entrega:   Optional[date] = None
     estatus:         Optional[Literal["Presupuesto", "En proceso", "Entregado"]] = None
     total:           Optional[float] = Field(None, ge=0)
-    anticipo:        Optional[float] = Field(None, ge=0)
+    # anticipo deliberadamente ausente — ver el mismo comentario en
+    # NotaCreate. editar_nota() arma su UPDATE dinámicamente desde los
+    # campos que trae este modelo (model_dump(exclude_unset=True)), así
+    # que quitarlo de aquí es suficiente para que un PUT ya no pueda
+    # escribirlo, sin tocar la lógica de editar_nota().
     vendedor_id:     Optional[int] = None
     sucursal_id:     Optional[int] = None
     nombre_cliente:  Optional[str] = None
@@ -483,13 +492,16 @@ async def crear_nota(
             if fila_vendedor is not None:
                 sucursal_id = fila_vendedor[0]
 
+        # anticipo no se inserta aquí: arranca en su default de columna (0)
+        # y de ahí en adelante lo mantiene trg_recalcular_anticipo (migración
+        # 015) en cuanto la nota reciba su primer pago.
         await cur.execute(
             """
             INSERT INTO notas
-              (folio, fecha_pedido, fecha_entrega, estatus, total, anticipo,
+              (folio, fecha_pedido, fecha_entrega, estatus, total,
                vendedor_id, nombre_cliente, telefono, consideraciones, foto_nota,
                usuario_id, sucursal_id)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
                 folio,
@@ -497,7 +509,6 @@ async def crear_nota(
                 data.fecha_entrega,
                 data.estatus,
                 data.total,
-                data.anticipo,
                 data.vendedor_id,
                 data.nombre_cliente,
                 data.telefono,

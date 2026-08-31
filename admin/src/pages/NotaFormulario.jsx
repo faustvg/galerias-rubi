@@ -65,6 +65,8 @@ const ESTATUS_OPCIONES = ['Presupuesto', 'En proceso', 'Entregado']
 const hoy = () => new Date().toISOString().slice(0, 10)
 
 // Estado inicial del encabezado — cadenas vacías para que los inputs sean siempre controlados
+// anticipo NO vive aquí (ronda 3, Parte B): ya no es un campo editable del
+// formulario, ver el estado `totalPagado` más abajo.
 const CABECERA_INICIAL = {
   nombre_cliente: '',
   telefono: '',
@@ -73,7 +75,6 @@ const CABECERA_INICIAL = {
   vendedor_id: '',
   sucursal_id: '',
   total: '',
-  anticipo: '',
   estatus: 'Presupuesto',
   consideraciones: '',
 }
@@ -135,10 +136,20 @@ export default function NotaFormulario() {
   // devuelve el backend junto con `vendedor_id`.
   const [vendedorHistorico, setVendedorHistorico] = useState('')
 
+  // "Cantidad Pagada" (ronda 3, Parte B) — YA NO es un campo del formulario:
+  // se muestra de solo lectura, alimentado por PagosEditor (que lo calcula
+  // desde la lista real de pagos, siempre actualizada, sin esperar a que
+  // el trigger de la migración 015 esté aplicado). Arranca en 0 porque una
+  // nota nueva no puede tener pagos todavía (PagosEditor necesita un folio
+  // ya existente) — al cargar una nota existente se pre-llena con
+  // nota.anticipo como valor de referencia mientras PagosEditor hace su
+  // propio fetch y lo corrige al total real.
+  const [totalPagado, setTotalPagado] = useState(0)
+
   // ── Valor derivado: resta se calcula en tiempo real ──────────────────────
-  // No necesita un useState — es una función pura de cabecera.total y .anticipo.
-  // Se recalcula en cada teclazo sin delay.
-  const restaCalculada = (Number(cabecera.total) || 0) - (Number(cabecera.anticipo) || 0)
+  // No necesita un useState — es una función pura de cabecera.total y
+  // totalPagado. Se recalcula en cada cambio sin delay.
+  const restaCalculada = (Number(cabecera.total) || 0) - (Number(totalPagado) || 0)
 
   // ── Carga inicial de datos ───────────────────────────────────────────────
   useEffect(() => {
@@ -195,10 +206,12 @@ export default function NotaFormulario() {
             vendedor_id:     nota.vendedor_id != null ? String(nota.vendedor_id) : '',
             sucursal_id:     nota.sucursal_id != null ? String(nota.sucursal_id) : '',
             total:           nota.total    != null ? String(nota.total)    : '',
-            anticipo:        nota.anticipo != null ? String(nota.anticipo) : '',
             estatus:         nota.estatus,
             consideraciones: nota.consideraciones || '',
           })
+          // Valor de referencia mientras PagosEditor carga los pagos reales
+          // y lo corrige (ver comentario junto a useState(totalPagado)).
+          setTotalPagado(nota.anticipo != null ? Number(nota.anticipo) : 0)
           setEstatusAnterior(nota.estatus)
           setFotoNota(fotoLimpia)
 
@@ -293,7 +306,9 @@ export default function NotaFormulario() {
       vendedor_id:     cabecera.vendedor_id ? Number(cabecera.vendedor_id) : null,
       sucursal_id:     cabecera.sucursal_id ? Number(cabecera.sucursal_id) : null,
       total:           Math.max(0, Number(cabecera.total)    || 0),
-      anticipo:        Math.max(0, Number(cabecera.anticipo) || 0),
+      // anticipo NO se manda: ya no es un campo del formulario (ver
+      // totalPagado) y el backend tampoco lo acepta en este payload
+      // (ronda 3, Parte B) — lo mantiene trg_recalcular_anticipo.
       estatus:         cabecera.estatus,
       consideraciones: cabecera.consideraciones.trim() || null,
       partidas: partidas.map(p => ({
@@ -492,7 +507,8 @@ export default function NotaFormulario() {
           <Seccion titulo="Montos">
             <p className="text-xs text-gray-400 mb-3 -mt-1">
               El total lo escribe el vendedor directamente — no se suma de los muebles.
-              Los muebles son para el registro y el inventario.
+              Los muebles son para el registro y el inventario. Cantidad Pagada
+              ya no se escribe aquí: se calcula sola desde los pagos registrados abajo.
             </p>
             <div className="grid grid-cols-3 gap-4">
               <Campo label="Total ($)" required>
@@ -507,17 +523,12 @@ export default function NotaFormulario() {
                   required
                 />
               </Campo>
-              <Campo label="Cantidad Pagada ($)">
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={cabecera.anticipo}
-                  onChange={e => handleCampo('anticipo', e.target.value)}
-                  placeholder="0"
-                  className={estiloInput}
-                />
-              </Campo>
+              <div>
+                <p className="text-xs text-gray-500 font-medium mb-1.5">Cantidad Pagada</p>
+                <div className={`${estiloInput} font-bold text-gray-600 bg-gray-50`}>
+                  ${Number(totalPagado || 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })}
+                </div>
+              </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium mb-1.5">Resta</p>
                 <div className={`${estiloInput} font-bold ${
@@ -534,10 +545,12 @@ export default function NotaFormulario() {
               en el backend (POST/GET/DELETE /notas/{folio}/pagos), no parte
               del payload de la nota — se guardan de inmediato, igual que la
               foto de la nota de papel. Por eso solo aparecen en modo edición:
-              necesitan un folio ya existente. */}
+              necesitan un folio ya existente. onTotalChange alimenta
+              `totalPagado` de arriba — es la fuente real de "Cantidad Pagada"
+              y de Resta, ver ronda 3 / Parte B. */}
           <Seccion titulo="Pagos">
             {modoEdicion ? (
-              <PagosEditor folio={folio} />
+              <PagosEditor folio={folio} onTotalChange={setTotalPagado} />
             ) : (
               <p className="text-xs text-gray-400">
                 Podrás registrar los pagos (efectivo, tarjeta, transferencia) después de crear el pedido.
@@ -784,11 +797,17 @@ function FilaPartida({ partida, numero, productos, onSeleccionarProducto, onChan
 // parte del payload de la nota.
 // Un pago DIVIDIDO (parte efectivo, parte tarjeta) es simplemente agregar
 // dos filas seguidas con el mismo folio.
+//
+// onTotalChange (ronda 3, Parte B) — se llama cada vez que `pagos` cambia,
+// con la suma real (totalRegistrado). El padre (NotaFormulario) lo usa como
+// "Cantidad Pagada" de solo lectura y para calcular Resta — así ese número
+// siempre refleja los pagos de verdad, sin esperar a que el trigger de la
+// migración 015 esté aplicado en el servidor.
 
 const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia']
 const TIPOS_PAGO   = ['anticipo', 'liquidacion', 'abono']
 
-function PagosEditor({ folio }) {
+function PagosEditor({ folio, onTotalChange }) {
   const [pagos,     setPagos]     = useState([])
   const [cargando,  setCargando]  = useState(true)
   const [error,     setError]     = useState(null)
@@ -868,6 +887,11 @@ function PagosEditor({ folio }) {
   }
 
   const totalRegistrado = pagos.reduce((acc, p) => acc + Number(p.monto), 0)
+
+  // Avisar al padre en cuanto `pagos` cambie (carga inicial, alta, baja) —
+  // no solo tras confirmar un alta/baja, para que la carga inicial también
+  // corrija el valor de referencia (nota.anticipo) al total real.
+  useEffect(() => { onTotalChange?.(totalRegistrado) }, [totalRegistrado, onTotalChange])
 
   return (
     <div className="space-y-3">
