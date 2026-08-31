@@ -503,12 +503,23 @@ export default function NotaFormulario() {
             </div>
           </Seccion>
 
-          {/* ── 3. Montos ── */}
-          <Seccion titulo="Montos">
+          {/* ── 3. Montos y Pagos (ronda 4, #4: una sola sección) ──────────────
+              Antes eran dos tarjetas separadas (Montos con Total/Cantidad
+              Pagada/Resta, y Pagos con el historial + alta) que "coincidían"
+              sin estar visualmente conectadas. Ahora son una sola: los montos
+              arriba, el historial de pagos justo debajo, en la misma tarjeta
+              — se lee como "esto se debe, y así se ha ido pagando" en vez de
+              dos cajas que casualmente están de acuerdo.
+              Pagos sigue siendo un sub-recurso propio del backend (POST/GET/
+              DELETE /notas/{folio}/pagos, no parte del payload de la nota) —
+              eso no cambió, solo la presentación. onTotalChange alimenta
+              `totalPagado` de arriba — es la fuente real de "Cantidad
+              Pagada" y de Resta (ver ronda 3 / Parte B). */}
+          <Seccion titulo="Montos y Pagos">
             <p className="text-xs text-gray-400 mb-3 -mt-1">
               El total lo escribe el vendedor directamente — no se suma de los muebles.
               Los muebles son para el registro y el inventario. Cantidad Pagada
-              ya no se escribe aquí: se calcula sola desde los pagos registrados abajo.
+              se calcula sola desde el historial de pagos de abajo.
             </p>
             <div className="grid grid-cols-3 gap-4">
               <Campo label="Total ($)" required>
@@ -538,24 +549,19 @@ export default function NotaFormulario() {
                 </div>
               </div>
             </div>
-          </Seccion>
 
-          {/* ── 3b. Pagos — cómo se cobró (efectivo/tarjeta/transferencia) ──
-              A diferencia de las partidas, los pagos son un sub-recurso propio
-              en el backend (POST/GET/DELETE /notas/{folio}/pagos), no parte
-              del payload de la nota — se guardan de inmediato, igual que la
-              foto de la nota de papel. Por eso solo aparecen en modo edición:
-              necesitan un folio ya existente. onTotalChange alimenta
-              `totalPagado` de arriba — es la fuente real de "Cantidad Pagada"
-              y de Resta, ver ronda 3 / Parte B. */}
-          <Seccion titulo="Pagos">
-            {modoEdicion ? (
-              <PagosEditor folio={folio} onTotalChange={setTotalPagado} />
-            ) : (
-              <p className="text-xs text-gray-400">
-                Podrás registrar los pagos (efectivo, tarjeta, transferencia) después de crear el pedido.
+            <div className="mt-5 pt-4 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                Historial de pagos
               </p>
-            )}
+              {modoEdicion ? (
+                <PagosEditor folio={folio} onTotalChange={setTotalPagado} />
+              ) : (
+                <p className="text-xs text-gray-400">
+                  Podrás registrar los pagos (efectivo, tarjeta, transferencia) después de crear el pedido.
+                </p>
+              )}
+            </div>
           </Seccion>
 
           {/* ── 4. Muebles (partidas) ── */}
