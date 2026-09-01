@@ -836,10 +836,14 @@ function PagosEditor({ folio, onTotalChange }) {
   const [error,     setError]     = useState(null)
   const [guardando, setGuardando] = useState(false)
 
-  // Formulario de "agregar pago" — se reinicia después de cada guardado exitoso
+  // Formulario de "agregar pago" — se reinicia después de cada guardado exitoso.
+  // fecha (ronda 5, #2): antes el backend siempre usaba la fecha de hoy por
+  // default silencioso — ahora es un campo editable, mismo estilo que Fecha
+  // del pedido / Fecha de entrega, con hoy() como valor inicial.
   const [metodo, setMetodo] = useState('efectivo')
   const [tipo,   setTipo]   = useState('')
   const [monto,  setMonto]  = useState('')
+  const [fecha,  setFecha]  = useState(hoy())
 
   async function cargarPagos() {
     setCargando(true)
@@ -869,7 +873,7 @@ function PagosEditor({ folio, onTotalChange }) {
     try {
       const res = await apiFetch(`/notas/${folio}/pagos`, {
         method: 'POST',
-        body: JSON.stringify({ metodo, tipo: tipo || null, monto: montoNum }),
+        body: JSON.stringify({ metodo, tipo: tipo || null, monto: montoNum, fecha }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -877,6 +881,7 @@ function PagosEditor({ folio, onTotalChange }) {
       }
       setMonto('')
       setTipo('')
+      setFecha(hoy())
       await cargarPagos()
     } catch (err) {
       setError(err.message)
@@ -951,7 +956,7 @@ function PagosEditor({ folio, onTotalChange }) {
 
       {/* Fila para agregar un pago nuevo — deshabilitada mientras se guarda,
           para no dejar editar los campos a medio envío. */}
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-gray-100">
         <select
           value={metodo}
           onChange={e => setMetodo(e.target.value)}
@@ -969,6 +974,13 @@ function PagosEditor({ folio, onTotalChange }) {
           <option value="">— Tipo (opcional) —</option>
           {TIPOS_PAGO.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
+        <input
+          type="date"
+          value={fecha}
+          onChange={e => setFecha(e.target.value)}
+          disabled={guardando}
+          className={estiloInput}
+        />
         <input
           type="number"
           min="0"
