@@ -24,15 +24,16 @@
  *   la consulta agrega WHERE usuario_id = tu_id antes de hacer el GROUP BY.
  *   Tú como frontend ni te enteras — recibes solo tus números.
  *
- * ── GRÁFICAS Y TARJETAS DE KPI ────────────────────────────────────────────
+ * ── DESGLOSES DE UTILIDAD Y TARJETAS DE KPI ───────────────────────────────
  *
- *   El wrapper de recharts (antes vivía aquí mismo) ahora es
- *   ../components/GraficaBarras.jsx, compartido con Historico.jsx — un solo
- *   lugar que define cómo se ve una gráfica de barras en todo el panel,
- *   incluido el acento de color único (../lib/theme.js). Mismo criterio
- *   para las tarjetas de KPI (../components/KpiTile.jsx) y las filas de
- *   lista (../components/FilaLista.jsx): Inicio y Histórico reusan los
- *   mismos tres componentes en vez de mantener cada uno su propia versión.
+ *   Los desgloses de utilidad (categoría/proveedor/sucursal/vendedor) usan
+ *   ../components/ListaProporcion.jsx, compartido con Historico.jsx — una
+ *   lista simple "nombre — monto" con una barra de proporción sutil, no una
+ *   gráfica formal con ejes (ronda 5, #4: el público real de estas
+ *   pantallas no lee gráficas seguido). Mismo criterio para las tarjetas
+ *   de KPI (../components/KpiTile.jsx) y las filas de lista
+ *   (../components/FilaLista.jsx): Inicio y Histórico reusan los mismos
+ *   componentes en vez de mantener cada uno su propia versión.
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -42,7 +43,7 @@ import { apiFetch } from '../api'
 import Layout from '../components/Layout'
 import KpiTile from '../components/KpiTile'
 import { FilaLista, ListaCard, ListaVacia } from '../components/FilaLista'
-import GraficaBarras from '../components/GraficaBarras'
+import ListaProporcion from '../components/ListaProporcion'
 
 // ── Formateadores de moneda ──────────────────────────────────────────────────
 const mxn = (n) =>
@@ -262,10 +263,10 @@ export default function Dashboard() {
 }
 
 
-// ── Sección de gráficas ───────────────────────────────────────────────────────
-// Un solo acento (ver ../components/GraficaBarras.jsx) — antes cada
-// desglose usaba su propio color (naranja/índigo/rosa/verde); ahora las 4
-// gráficas leen como una sola sección, no cuatro widgets distintos.
+// ── Sección de desgloses ───────────────────────────────────────────────────
+// Listas simples, no gráficas (ver ../components/ListaProporcion.jsx —
+// ronda 5, #4) — un solo acento sutil en la barra de proporción, en vez de
+// un color por desglose.
 function GraficasUtilidad({ utilidad, es_worker }) {
   const { por_categoria, por_proveedor, por_sucursal, por_worker } = utilidad
 
@@ -281,17 +282,29 @@ function GraficasUtilidad({ utilidad, es_worker }) {
   return (
     <div className="space-y-6">
       {hayDatos(por_categoria) && (
-        <GraficaBarras titulo="Utilidad estimada por categoría" datos={por_categoria} />
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Utilidad estimada por categoría</h2>
+          <ListaProporcion datos={por_categoria} />
+        </section>
       )}
       {hayDatos(por_proveedor) && (
-        <GraficaBarras titulo="Utilidad estimada por proveedor" datos={por_proveedor} />
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Utilidad estimada por proveedor</h2>
+          <ListaProporcion datos={por_proveedor} />
+        </section>
       )}
       {hayDatos(por_sucursal) && (
-        <GraficaBarras titulo="Utilidad estimada por sucursal" datos={por_sucursal} />
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Utilidad estimada por sucursal</h2>
+          <ListaProporcion datos={por_sucursal} />
+        </section>
       )}
       {/* Solo admin/superadmin/viewer ven comparación entre workers */}
       {!es_worker && hayDatos(por_worker) && (
-        <GraficaBarras titulo="Utilidad estimada por vendedor" datos={por_worker} />
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Utilidad estimada por vendedor</h2>
+          <ListaProporcion datos={por_worker} />
+        </section>
       )}
     </div>
   )

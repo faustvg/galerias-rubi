@@ -67,7 +67,7 @@ import { apiFetch } from '../api'
 import Layout from '../components/Layout'
 import KpiTile from '../components/KpiTile'
 import { FilaLista, ListaCard, ListaVacia } from '../components/FilaLista'
-import GraficaBarras from '../components/GraficaBarras'
+import ListaProporcion from '../components/ListaProporcion'
 import {
   toISO, aMesInput, rangoMesActual, rangoMesPasado,
   rangoSemanaActual, rangoSemanaPasada, rangoSemanaDe, lunesDeLaSemana,
@@ -386,21 +386,24 @@ export default function Historico() {
             </p>
           )}
 
-          {/* ── 2/3. Panel izquierdo (Notas) y derecho (gasto de restock) ── */}
+          {/* ── 2/3. Panel izquierdo (Notas) y derecho (Restock + Cobros) ──────
+              Ronda 5, #3: Cobros del periodo vivía como sección aparte a lo
+              ancho, debajo de las dos columnas. En periodos tranquilos, la
+              izquierda (entregas + utilidad) solía quedar mucho más alta que
+              la derecha (solo restock), dejando un bloque de espacio muerto
+              junto a la columna corta. Mover Cobros a la columna derecha,
+              apilado bajo Restock, reparte mejor el contenido entre ambas
+              columnas sin necesitar un layout de masonry. ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
             <div className="space-y-6">
               <PanelEntregas entregadas={resumen.entregadas} />
               {utilidad && <PanelUtilidadCategoria por_categoria={utilidad.por_categoria} />}
             </div>
-            <PanelRestock movimientos={movimientos} gastoTotal={gastoRestock?.gasto_total} />
+            <div className="space-y-6">
+              <PanelRestock movimientos={movimientos} gastoTotal={gastoRestock?.gasto_total} />
+              {cobros && <PanelCobros cobros={cobros} />}
+            </div>
           </div>
-
-          {/* ── Cobros del periodo (Parte B, ronda 3) — dinero que entró de
-              verdad en el periodo, por fecha de pago. Sección propia a lo
-              ancho: es un concepto distinto tanto de "Notas" (izquierda)
-              como de "Restock" (derecha), no encaja limpio en ninguno de
-              los dos paneles. ── */}
-          {cobros && <PanelCobros cobros={cobros} />}
 
           {/* ── Resto de desgloses de utilidad (proveedor/sucursal/vendedor) —
               sin cambios de posición, la Parte 5 solo pidió mover "por
@@ -470,15 +473,14 @@ function PanelEntregas({ entregadas }) {
 
 function PanelUtilidadCategoria({ por_categoria }) {
   const hayDatos = por_categoria && por_categoria.some((d) => d.utilidad !== 0)
-  if (hayDatos) {
-    return <GraficaBarras titulo="Utilidad por categoría" datos={por_categoria} />
-  }
   return (
     <section>
       <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
         Utilidad por categoría
       </h2>
-      <ListaVacia mensaje="Sin datos de utilidad por categoría en este periodo." />
+      {hayDatos
+        ? <ListaProporcion datos={por_categoria} />
+        : <ListaVacia mensaje="Sin datos de utilidad por categoría en este periodo." />}
     </section>
   )
 }
@@ -543,36 +545,85 @@ function PanelRestock({ movimientos, gastoTotal }) {
 // al nombre, para distinguir a simple vista un cobro de un pedido que ya
 // se entregó de uno que sigue abierto — ver dashboard.py para la lógica.
 
+// tipo (ronda 5, #6) es texto libre y opcional en la tabla pagos (ver
+// TIPOS_PAGO en NotaFormulario.jsx) — un pago sin tipo cae en "sin_tipo"
+// aquí, no se descarta del desglose. Colores muteados y DISTINTOS del
+// acento de marca (amber, ya usado por "Pedido abierto") a propósito: esto
+// es diferenciación categórica real (3 tipos + sin tipo), no decoración.
+const TIPO_INFO = {
+  anticipo:    { etiqueta: 'Anticipos',     singular: 'Anticipo',     dot: 'bg-blue-400',    badge: 'text-blue-700 bg-blue-50' },
+  abono:       { etiqueta: 'Abonos',        singular: 'Abono',        dot: 'bg-purple-400',  badge: 'text-purple-700 bg-purple-50' },
+  liquidacion: { etiqueta: 'Liquidaciones', singular: 'Liquidación',  dot: 'bg-emerald-400', badge: 'text-emerald-700 bg-emerald-50' },
+  sin_tipo:    { etiqueta: 'Sin tipo',      singular: 'Sin tipo',     dot: 'bg-gray-300',    badge: 'text-gray-500 bg-gray-100' },
+}
+const ORDEN_TIPOS = ['anticipo', 'abono', 'liquidacion', 'sin_tipo']
+
 function PanelCobros({ cobros }) {
   const { cobrado_total, pagos } = cobros
+
+  // Subtotal por tipo — calculado aquí mismo desde `pagos` (el endpoint ya
+  // trae el tipo de cada pago, no hace falta un endpoint aparte). Solo se
+  // muestran los tipos que de verdad tienen algo en el periodo (mismo
+  // criterio de "no mostrar entradas vacías" que el resto de la ronda).
+  const sumaPorTipo = {}
+  for (const p of pagos) {
+    const clave = p.tipo || 'sin_tipo'
+    sumaPorTipo[clave] = (sumaPorTipo[clave] || 0) + Number(p.monto)
+  }
+  const subtotales = ORDEN_TIPOS
+    .filter((t) => sumaPorTipo[t])
+    .map((t) => ({ tipo: t, monto: sumaPorTipo[t], ...TIPO_INFO[t] }))
+
   return (
-    <section className="mt-6">
-      <div className="flex items-baseline justify-between mb-3 gap-2">
+    <section>
+      <div className="flex items-baseline justify-between mb-1 gap-2">
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
           Cobros del periodo
         </h2>
         <span className="text-sm font-bold text-gray-900 shrink-0">{mxn(cobrado_total)}</span>
       </div>
+
+      {subtotales.length > 0 && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 mb-3">
+          {subtotales.map((s) => (
+            <span key={s.tipo} className="inline-flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} aria-hidden="true" />
+              {s.etiqueta}: <span className="font-semibold text-gray-700">{mxn(s.monto)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       {pagos.length === 0 ? (
         <ListaVacia mensaje="Sin cobros registrados en este periodo." />
       ) : (
         <ListaCard>
-          {pagos.map((p, i) => (
-            <FilaLista
-              key={p.id}
-              to={`/notas/${p.folio}`}
-              titulo={p.etiqueta}
-              badge={p.pedido_abierto && (
-                <span className="text-[10px] font-semibold uppercase tracking-wide
-                                  text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full shrink-0">
-                  Pedido abierto
-                </span>
-              )}
-              meta={`${formatFecha(p.fecha)} · ${p.metodo}${p.tipo ? ` · ${p.tipo}` : ''}`}
-              derecha={mxn(p.monto)}
-              ultima={i === pagos.length - 1}
-            />
-          ))}
+          {pagos.map((p, i) => {
+            const info = TIPO_INFO[p.tipo || 'sin_tipo']
+            return (
+              <FilaLista
+                key={p.id}
+                to={`/notas/${p.folio}`}
+                titulo={p.etiqueta}
+                badge={
+                  <span className="inline-flex items-center gap-1.5 shrink-0">
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${info.badge}`}>
+                      {info.singular}
+                    </span>
+                    {p.pedido_abierto && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide
+                                        text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full">
+                        Pedido abierto
+                      </span>
+                    )}
+                  </span>
+                }
+                meta={`${formatFecha(p.fecha)} · ${p.metodo}`}
+                derecha={mxn(p.monto)}
+                ultima={i === pagos.length - 1}
+              />
+            )
+          })}
         </ListaCard>
       )}
     </section>
@@ -592,13 +643,22 @@ function GraficasUtilidadResto({ utilidad, es_worker }) {
   return (
     <div className="space-y-6 mt-6">
       {hayDatos(por_proveedor) && (
-        <GraficaBarras titulo="Utilidad por proveedor" datos={por_proveedor} />
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Utilidad por proveedor</h2>
+          <ListaProporcion datos={por_proveedor} />
+        </section>
       )}
       {hayDatos(por_sucursal) && (
-        <GraficaBarras titulo="Utilidad por sucursal" datos={por_sucursal} />
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Utilidad por sucursal</h2>
+          <ListaProporcion datos={por_sucursal} />
+        </section>
       )}
       {!es_worker && hayDatos(por_worker) && (
-        <GraficaBarras titulo="Utilidad por vendedor" datos={por_worker} />
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Utilidad por vendedor</h2>
+          <ListaProporcion datos={por_worker} />
+        </section>
       )}
     </div>
   )
