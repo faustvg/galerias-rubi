@@ -947,6 +947,12 @@ async def movimientos_periodo(
 # práctica aquí (si esta fila de pago existe, ya hay al menos ese abono),
 # pero se deja explícito en el WHERE/SELECT por si algún día se listan
 # pagos con monto 0 o se cambia el criterio.
+#
+# pg.tipo = 'saldo_previo' se excluye a propósito (ver migración 016,
+# propuesta): son renglones de backfill que reconstruyen el anticipo
+# perdido de notas legacy, con pg.fecha = notas.fecha_pedido — no
+# representan dinero cobrado EN el periodo, así que no deben sumar a
+# cobrado_total ni aparecer en el desglose de pagos.
 # ---------------------------------------------------------------------------
 
 @router.get("/cobros-periodo")
@@ -975,6 +981,7 @@ async def cobros_periodo(
         FROM  pagos pg
         JOIN  notas n ON n.folio = pg.folio_pedido
         WHERE pg.fecha BETWEEN %s AND %s
+          AND pg.tipo IS DISTINCT FROM 'saldo_previo'
     """
     params: list = [fecha_desde, fecha_hasta]
     if es_worker:
