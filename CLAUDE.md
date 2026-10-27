@@ -71,6 +71,13 @@ SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
 NOTA_EMAIL_DESTINO=mueblesrubimx@gmail.com
+
+# Solo en desarrollo local (http://localhost) — en producción NO poner esta
+# línea: sin ella la cookie de sesión lleva el flag Secure (solo HTTPS).
+COOKIE_SECURE=false
+# Opcional — orígenes CORS separados por coma. Default:
+# https://mueblesrubimx.com,https://www.mueblesrubimx.com
+# CORS_ORIGINS=
 ```
 
 ### Create an admin user
@@ -81,19 +88,16 @@ python api/crear_usuario.py
 # roles: superadmin / admin / viewer / worker
 ```
 
-## ⚠️ Antes de un deploy público (ya aplicado en producción, dejar como referencia)
+## ⚠️ Cookie de sesión y CORS (corregido 2026-10-27)
 
-```python
-# SessionMiddleware
-https_only=True,
-
-# CORSMiddleware
-allow_origins=["https://mueblesrubimx.com"],
-```
-
-Publicar con `https_only=False` deja la cookie de sesión viajar sin cifrar
-por HTTP. Publicar con `allow_origins=["*"]` deja que cualquier sitio haga
-requests con credenciales contra la API de admin.
+Hasta 2026-10-27 producción corría con `https_only=False` y
+`allow_origins=["*"]` hardcodeados en `api/main.py` (este archivo decía,
+por error, que ya estaba corregido). Ahora `main.py` lee `COOKIE_SECURE` y
+`CORS_ORIGINS` de `api/.env` con **defaults seguros**: sin nada en el
+`.env`, la cookie lleva `Secure` y CORS solo acepta
+`mueblesrubimx.com`/`www.mueblesrubimx.com`. Solo el `.env` local lleva
+`COOKIE_SECURE=false`. Nunca volver a hardcodear `https_only=False` ni
+`allow_origins=["*"]`.
 
 ---
 

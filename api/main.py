@@ -67,20 +67,35 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Galerías Rubí API", version="1.0.0", lifespan=lifespan)
 
+# Defaults seguros para producción: si api/.env no dice nada, la cookie viaja
+# solo por HTTPS y CORS solo acepta el dominio real. En desarrollo local
+# (http://localhost) poner COOKIE_SECURE=false en api/.env.
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true").strip().lower() != "false"
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "CORS_ORIGINS", "https://mueblesrubimx.com,https://www.mueblesrubimx.com"
+    ).split(",")
+    if o.strip()
+]
+
 # Sesiones: cookie firmada con itsdangerous (HMAC-SHA256).
-# max_age=28800 = 8 horas. https_only=True en producción (requiere HTTPS).
+# max_age=28800 = 8 horas.
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
     session_cookie="grubi_session",
     max_age=28800,
     same_site="lax",
-    https_only=False,
+    https_only=COOKIE_SECURE,
 )
 
+# El sitio y el panel llaman a /api desde el mismo dominio (nginx en
+# producción, proxy de Vite en local), así que no dependen de CORS — esto
+# solo cierra la puerta a otros orígenes.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # ⚠️ tighten to your domain before public deploy
+    allow_origins=CORS_ORIGINS,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
