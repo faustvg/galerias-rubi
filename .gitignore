@@ -23,3 +23,6 @@ Thumbs.db
 # Uploaded product photos — generated at runtime, NOT in git.
 # In production, nginx serves this folder directly (bypassing FastAPI).
 uploads/
+
+# Notas internas de estado del proyecto (IP del VPS, decisiones de negocio) — repo público
+mueble_rubi.md
