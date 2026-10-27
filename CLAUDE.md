@@ -2,18 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Actualizado:** 2026-08-09, tras la regla de "ocultar precio para productos
-disponibles en CDMX" y la remoción de la etiqueta "SUCURSAL CDMX" del
-catálogo. Si trabajaste en este repo antes de esa fecha, revisa las
+**Actualizado:** 2026-10-27, tras el cambio de laptop (Windows → MacBook),
+el fix de cookie/CORS en producción y la verificación de que 001–016 están
+aplicadas. Si trabajaste en este repo antes de esa fecha, revisa las
 secciones marcadas ⚠️ — cambiaron.
+
+El estado del proyecto, decisiones de negocio y pendientes viven en
+`muebles_rubi.md` (raíz del repo, **gitignored** — el repo es público y ese
+archivo tiene la IP del VPS y notas internas; nunca commitearlo). Léelo al
+empezar una sesión.
 
 ## Project overview
 
 **Muebles Rubí** es un negocio familiar de muebles (San Pedro Tultepec,
 Estado de México) con presencia digital: un sitio público estático
 (`web-publico/`) y un panel de administración React (`admin/`), ambos
-respaldados por una API FastAPI (`api/`) y PostgreSQL (dev local en Windows,
-producción en un VPS de Hetzner con Ubuntu 24.04). Desde 2026 el negocio
+respaldados por una API FastAPI (`api/`) y PostgreSQL (dev local en un MacBook con
+PostgreSQL 16 vía Homebrew, producción en un VPS de Hetzner con Ubuntu
+26.04 y PostgreSQL 18). Desde 2026 el negocio
 opera **dos sucursales legalmente distintas**: San Pedro Tultepec (Muebles
 Rubí, entidad principal) y Ciudad de México (Muebles Local No.17) — mismo
 catálogo compartido en su mayoría, con un subconjunto de productos también
@@ -30,13 +36,25 @@ usuarios, sucursales, testimonios, más un dashboard con Recharts.
 
 ## Commands
 
-### Python environment (run from `api/`)
+### Desarrollo local (macOS, desde la raíz del repo `~/code/galerias-rubi`)
+
+El clon de trabajo vive **fuera de Google Drive** — la sincronización de
+Drive corrompió una copia anterior con `.git` adentro.
 
 ```bash
-venv\Scripts\activate          # Windows, entorno local
+python3.12 -m venv venv        # Python 3.12, no 3.15: bcrypt<4/passlib no soportan versiones tan nuevas
+source venv/bin/activate
 pip install -r api/requirements.txt
-uvicorn api.main:app --reload
+uvicorn api.main:app --reload  # API en http://localhost:8000
+
+cd admin && npm install && npm run dev   # panel en http://localhost:5173/admin/ (proxy /api → :8000)
 ```
+
+La base local (`galeriasrubi`) es una copia de producción **anonimizada**
+(nombres de cliente → `Cliente <folio>`, teléfonos → `5500000000`,
+`foto_nota` → NULL) y todos los usuarios tienen la contraseña local
+`rubi-local`. Las fotos de producto (`uploads/`) no están en local.
+Nunca dejar un dump sin anonimizar fuera del servidor.
 
 ### Database (psql)
 
@@ -45,7 +63,7 @@ psql -U <user> -d <dbname> -f db/schema.sql    # inicializar una base nueva desd
 ```
 
 Para bases existentes, aplicar migraciones individuales de `db/migrations/`
-en orden (001–014) — nunca reaplicar `schema.sql` sobre una base con datos.
+en orden (001–016) — nunca reaplicar `schema.sql` sobre una base con datos.
 
 ### Environment variables
 
@@ -111,20 +129,24 @@ PostgreSQL DB  →  FastAPI (GET /publico/productos, /publico/categorias, ...)  
 ```
 
 El sitio estático obtiene el catálogo en vivo desde la API al cargar la
-página — no hay archivo JSON intermedio ni paso de publicación manual. El
-workflow de GitHub Actions (`.github/workflows/deploy-pages.yml`) despliega
-`web-publico/` a GitHub Pages automáticamente en cada push a `main` que
-toque esa carpeta — **verificado** (el archivo existe en el repo desde el
-commit `fad00ad`, 2026-06-19). `api/` y `admin/` se despliegan aparte, a
-mano, vía SSH al VPS (no hay pipeline automático para esos dos).
+página — no hay archivo JSON intermedio ni paso de publicación manual.
+
+⚠️ **El sitio en vivo (`mueblesrubimx.com`) se despliega 100% a mano**:
+SSH al VPS → `cd ~/galerias-rubi && git pull origin main` (+ reiniciar
+`galerias-api.service` si cambió `api/`, + `npm run build` en `admin/` si
+cambió el panel). El workflow `.github/workflows/deploy-pages.yml` publica
+`web-publico/` en **GitHub Pages**, un destino aparte que el dominio NO
+usa — su existencia no significa que el sitio real se actualice solo.
+Después de un deploy, confirmar que `git log --oneline -1` en el VPS
+coincide con el commit que se empujó.
 
 ### Folder layout
 
 ```
 galerias-rubi/
-├── web-publico/     ← sitio estático, sin build step → GitHub Pages (deploy automático)
-├── api/             ← FastAPI backend → VPS (deploy manual)
-├── admin/           ← React (Vite) admin panel → VPS (deploy manual, build local)
+├── web-publico/     ← sitio estático, sin build step → VPS/nginx (deploy manual, git pull)
+├── api/             ← FastAPI backend → VPS (deploy manual, restart del servicio)
+├── admin/           ← React (Vite) admin panel → VPS (deploy manual, npm run build en el servidor)
 ├── db/              ← schema.sql (snapshot) + migrations/ (histórico, fuente de verdad real)
 ├── docs/            ← diagramas y notas internas
 ├── .github/
@@ -138,8 +160,9 @@ galerias-rubi/
 ### Database schema
 
 `schema.sql` es un snapshot completo; `db/migrations/` es la fuente de
-verdad histórica cuando difieran. Migraciones aplicadas hasta la fecha:
-001–014.
+verdad histórica cuando difieran. Migraciones aplicadas en producción:
+001–016 (verificado 2026-10-27). `017_sucursales_locales_reales.sql` es una
+propuesta sin aplicar y sin commitear — ver `muebles_rubi.md`.
 
 Tablas principales:
 
