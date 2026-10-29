@@ -83,3 +83,27 @@ export function rangoMesPasado() {
   const primero = new Date(ultimo.getFullYear(), ultimo.getMonth(), 1)
   return { desde: toISO(primero), hasta: toISO(ultimo) }
 }
+
+// Periodo con el que se compara en Histórico (los ▲▼ %):
+//   - mes completo  → el mes calendario anterior completo (oct → sep,
+//     aunque tengan distinto número de días)
+//   - cualquier otro rango (semana ISO, etc.) → el mismo número de días
+//     inmediatamente antes (semana → semana anterior)
+export function rangoAnterior({ desde, hasta }) {
+  const d = new Date(desde + 'T00:00:00')
+  const h = new Date(hasta + 'T00:00:00')
+  const esMesCompleto =
+    d.getDate() === 1 &&
+    d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear() &&
+    h.getDate() === new Date(h.getFullYear(), h.getMonth() + 1, 0).getDate()
+  if (esMesCompleto) {
+    return {
+      desde: toISO(new Date(d.getFullYear(), d.getMonth() - 1, 1)),
+      hasta: toISO(new Date(d.getFullYear(), d.getMonth(), 0)),
+    }
+  }
+  const dias = Math.round((h - d) / 86400000) + 1
+  const finAnt = new Date(d); finAnt.setDate(d.getDate() - 1)
+  const iniAnt = new Date(d); iniAnt.setDate(d.getDate() - dias)
+  return { desde: toISO(iniAnt), hasta: toISO(finAnt) }
+}

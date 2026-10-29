@@ -4,7 +4,7 @@
  * "hoy". Ver el comentario de cabecera en periodos.js para la causa raíz.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { toISO, rangoSemanaDe, rangoSemanaActual, rangoSemanaPasada, rangoMesActual, rangoMesPasado } from './periodos'
+import { toISO, rangoSemanaDe, rangoSemanaActual, rangoSemanaPasada, rangoMesActual, rangoMesPasado, rangoAnterior } from './periodos'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -95,5 +95,29 @@ describe('rangoMesActual / rangoMesPasado — sanity (mismo módulo, misma causa
   it('mes pasado maneja el cruce de año (enero → diciembre anterior)', () => {
     fijarHoy('2026-01-10')
     expect(rangoMesPasado()).toEqual({ desde: '2025-12-01', hasta: '2025-12-31' })
+  })
+})
+
+describe('rangoAnterior — periodo de comparación de Histórico', () => {
+  it('mes completo → mes calendario anterior completo (31 → 30 días)', () => {
+    expect(rangoAnterior({ desde: '2026-10-01', hasta: '2026-10-31' }))
+      .toEqual({ desde: '2026-09-01', hasta: '2026-09-30' })
+  })
+
+  it('mes completo en enero → diciembre del año anterior', () => {
+    expect(rangoAnterior({ desde: '2026-01-01', hasta: '2026-01-31' }))
+      .toEqual({ desde: '2025-12-01', hasta: '2025-12-31' })
+  })
+
+  it('marzo → febrero (28 días)', () => {
+    expect(rangoAnterior({ desde: '2026-03-01', hasta: '2026-03-31' }))
+      .toEqual({ desde: '2026-02-01', hasta: '2026-02-28' })
+  })
+
+  it('semana ISO → semana anterior, también cruzando de año', () => {
+    expect(rangoAnterior({ desde: '2026-10-26', hasta: '2026-11-01' }))
+      .toEqual({ desde: '2026-10-19', hasta: '2026-10-25' })
+    expect(rangoAnterior({ desde: '2026-01-05', hasta: '2026-01-11' }))
+      .toEqual({ desde: '2025-12-29', hasta: '2026-01-04' })
   })
 })

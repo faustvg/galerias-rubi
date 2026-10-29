@@ -214,13 +214,13 @@ export default function NuevosIngresos() {
               <>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={semanas} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                    <XAxis dataKey="etiqueta" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={mxnCorto} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3EFE8" />
+                    <XAxis dataKey="etiqueta" tick={{ fontSize: 10, fill: '#ABA092' }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={mxnCorto} tick={{ fontSize: 11, fill: '#ABA092' }} axisLine={false} tickLine={false} />
                     <Tooltip
                       formatter={(v) => [mxn(v), 'Gasto']}
-                      cursor={{ fill: '#fef3c7' }}
-                      contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', fontSize: '13px' }}
+                      cursor={{ fill: '#F4E4DA' }}
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #E8E2D6', fontSize: '13px' }}
                     />
                     {/* onClick en <Bar>, no en <BarChart> -- entrega directo el
                         punto de datos (data, index) en vez de depender de

@@ -9,4 +9,14 @@
  * mano en cada gráfica — se reusa el mismo valor que ya usaba el chart de
  * "Utilidad por categoría" antes de esta ronda, no se inventa uno nuevo.
  */
-export const ACENTO_HEX = '#f59e0b'   // Tailwind amber-500
+export const ACENTO_HEX = '#A46447'   // amber-600 = terracota del sitio (ver tailwind.config.js)
+
+// Un color fijo por local (migración 018), tomados de la paleta del sitio:
+// terracota, ocre, salvia (--accent1) y café (--text). Mismo local, mismo
+// color en todas las gráficas.
+export const COLORES_LOCAL = {
+  'Local Jose':     '#A46447',
+  'Local Amarillo': '#D4A24C',
+  'Almacen':        '#4D362E',
+  'Local 17':       '#87937B',
+}

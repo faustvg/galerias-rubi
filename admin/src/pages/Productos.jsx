@@ -323,7 +323,7 @@ function FotoThumb({ url, alt = '', className = '' }) {
     <div className={`bg-gray-100 flex items-center justify-center ${className}`}>
       <svg
         width="32" height="32" viewBox="0 0 24 24"
-        fill="none" stroke="#d1d5db" strokeWidth="1.5"
+        fill="none" stroke="#D5CCBD" strokeWidth="1.5"
         strokeLinecap="round" strokeLinejoin="round"
         aria-hidden="true"
       >
