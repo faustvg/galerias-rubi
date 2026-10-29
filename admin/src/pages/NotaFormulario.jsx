@@ -73,7 +73,7 @@ const CABECERA_INICIAL = {
   fecha_pedido: hoy(),
   fecha_entrega: '',
   vendedor_id: '',
-  sucursal_id: '',
+  bodega_id: '',
   total: '',
   estatus: 'Presupuesto',
   consideraciones: '',
@@ -115,7 +115,7 @@ export default function NotaFormulario() {
   // Datos de referencia que se cargan una vez al montar
   const [vendedores, setVendedores]   = useState([])
   const [productos,  setProductos]    = useState([])
-  const [sucursales, setSucursales]   = useState([])
+  const [locales,    setLocales]      = useState([])   // bodegas = locales de venta (migración 018)
 
   // Control de la UI
   const [cargando,  setCargando]  = useState(true)
@@ -157,11 +157,11 @@ export default function NotaFormulario() {
       setCargando(true)
       setError(null)
       try {
-        // Cargar vendedores, productos y sucursales en paralelo — independientes entre sí
+        // Cargar vendedores, productos y locales en paralelo — independientes entre sí
         const [resV, resP, resS] = await Promise.all([
           apiFetch('/usuarios/vendedores'),
           apiFetch('/productos'),
-          apiFetch('/sucursales'),
+          apiFetch('/bodegas'),
         ])
 
         if (resV.status === 401 || resP.status === 401 || resS.status === 401) {
@@ -169,12 +169,12 @@ export default function NotaFormulario() {
         }
         if (!resV.ok) throw new Error('No se pudo cargar la lista de vendedores.')
         if (!resP.ok) throw new Error('No se pudo cargar los productos.')
-        if (!resS.ok) throw new Error('No se pudo cargar las sucursales.')
+        if (!resS.ok) throw new Error('No se pudo cargar los locales.')
 
         const [dataV, dataP, dataS] = await Promise.all([resV.json(), resP.json(), resS.json()])
         setVendedores(dataV)
         setProductos(dataP)
-        setSucursales(dataS)
+        setLocales(dataS.filter(b => b.activo))
 
         // En modo edición, cargar la nota existente (secuencial: depende de los datos base)
         if (modoEdicion) {
@@ -204,7 +204,7 @@ export default function NotaFormulario() {
             fecha_pedido:    nota.fecha_pedido    || hoy(),
             fecha_entrega:   nota.fecha_entrega   || '',
             vendedor_id:     nota.vendedor_id != null ? String(nota.vendedor_id) : '',
-            sucursal_id:     nota.sucursal_id != null ? String(nota.sucursal_id) : '',
+            bodega_id:       nota.bodega_id   != null ? String(nota.bodega_id)   : '',
             total:           nota.total    != null ? String(nota.total)    : '',
             estatus:         nota.estatus,
             consideraciones: nota.consideraciones || '',
@@ -248,17 +248,6 @@ export default function NotaFormulario() {
     }
   }
 
-  // Al elegir vendedor, autocompletar Sucursal con la sucursal ACTUAL de ese
-  // vendedor — el campo queda editable después por si la venta fue en otra
-  // sucursal (ver comentario junto al <select> de Vendedor).
-  function handleVendedorChange(vendedorId) {
-    const v = vendedores.find(x => String(x.id) === String(vendedorId))
-    setCabecera(prev => ({
-      ...prev,
-      vendedor_id: vendedorId,
-      sucursal_id: v?.sucursal_id != null ? String(v.sucursal_id) : prev.sucursal_id,
-    }))
-  }
 
   // AGREGAR: añade un objeto nuevo al final del array
   function agregarPartida() {
@@ -304,7 +293,8 @@ export default function NotaFormulario() {
       fecha_pedido:    cabecera.fecha_pedido          || hoy(),
       fecha_entrega:   cabecera.fecha_entrega         || null,
       vendedor_id:     cabecera.vendedor_id ? Number(cabecera.vendedor_id) : null,
-      sucursal_id:     cabecera.sucursal_id ? Number(cabecera.sucursal_id) : null,
+      // La sucursal ya no se manda: el backend la deriva del local elegido.
+      bodega_id:       cabecera.bodega_id ? Number(cabecera.bodega_id) : null,
       total:           Math.max(0, Number(cabecera.total)    || 0),
       // anticipo NO se manda: ya no es un campo del formulario (ver
       // totalPagado) y el backend tampoco lo acepta en este payload
@@ -321,6 +311,12 @@ export default function NotaFormulario() {
   }
 
   async function handleGuardar() {
+    if (!cabecera.bodega_id) {
+      setError('Elige el local donde se hizo la venta.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     // ── Confirmación de Entregado ──────────────────────────────────────────
     // Si el formulario está en Entregado y NO estaba antes, pedimos confirmación.
     // En crear, estatusAnterior es null, así que cualquier Entregado en crear pide confirmación.
@@ -450,17 +446,10 @@ export default function NotaFormulario() {
                   (empleado desactivado, dato histórico), se agrega como
                   opción extra al final usando el nombre que ya resolvió el
                   backend (vendedorHistorico).
-
-                  Al elegir un vendedor, la Sucursal de abajo se autocompleta
-                  con la sucursal ACTUAL de ese vendedor (handleVendedorChange)
-                  — pero queda editable por si la venta ocurrió en otra
-                  sucursal. A diferencia de vendedor_id, sucursal_id se
-                  CONGELA al guardar la nota: si el vendedor se reubica
-                  después, esta nota ya guardada no cambia.
                 */}
                 <select
                   value={cabecera.vendedor_id}
-                  onChange={e => handleVendedorChange(e.target.value)}
+                  onChange={e => handleCampo('vendedor_id', e.target.value)}
                   className={estiloInput}
                 >
                   <option value="">— Sin vendedor —</option>
@@ -477,15 +466,23 @@ export default function NotaFormulario() {
                   )}
                 </select>
               </Campo>
-              <Campo label="Sucursal">
+              <Campo label="Local">
+                {/*
+                  Obligatorio. Se elige a mano en cada nota: una vendedora no
+                  siempre vende en el mismo local. La sucursal de la nota la
+                  deriva el backend del local (bodegas.sucursal_id).
+                */}
                 <select
-                  value={cabecera.sucursal_id}
-                  onChange={e => handleCampo('sucursal_id', e.target.value)}
+                  value={cabecera.bodega_id}
+                  onChange={e => handleCampo('bodega_id', e.target.value)}
                   className={estiloInput}
+                  required
                 >
-                  <option value="">— Sin sucursal —</option>
-                  {sucursales.map(s => (
-                    <option key={s.id} value={s.id}>{s.nombre}</option>
+                  <option value="">— Elige el local —</option>
+                  {locales.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.sucursal_nombre ? `${b.sucursal_nombre} - ${b.nombre}` : b.nombre}
+                    </option>
                   ))}
                 </select>
               </Campo>

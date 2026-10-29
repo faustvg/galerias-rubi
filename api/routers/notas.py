@@ -117,6 +117,10 @@ class NotaCreate(BaseModel):
     # sucursal_id ACTUAL del vendedor elegido — pero queda disponible aquí
     # para permitir un override manual desde el formulario.
     sucursal_id:     Optional[int] = None
+    # bodega_id (migración 018): el LOCAL donde se vendió (Local Jose,
+    # Local Amarillo, Almacen, Local 17). Si llega, la sucursal_id de la
+    # nota se deriva de bodegas.sucursal_id y pisa a la de arriba.
+    bodega_id:       Optional[int] = None
     nombre_cliente:  Optional[str] = None
     telefono:        Optional[str] = None
     consideraciones: Optional[str] = None
@@ -143,6 +147,7 @@ class NotaUpdate(BaseModel):
     # escribirlo, sin tocar la lógica de editar_nota().
     vendedor_id:     Optional[int] = None
     sucursal_id:     Optional[int] = None
+    bodega_id:       Optional[int] = None   # ver NotaCreate — también recalcula sucursal_id
     nombre_cliente:  Optional[str] = None
     telefono:        Optional[str] = None
     consideraciones: Optional[str] = None
@@ -181,6 +186,8 @@ class NotaResumen(BaseModel):
     usuario_id:     Optional[int]
     nombre_usuario: Optional[str]   # join de usuarios
     num_partidas:   int
+    bodega_id:      Optional[int] = None
+    local:          Optional[str] = None   # "San Pedro Tultepec - Local Jose"
 
 
 class PagosResumen(BaseModel):
@@ -210,6 +217,8 @@ class NotaDetalle(BaseModel):
     foto_nota:       Optional[str]
     usuario_id:      Optional[int]
     nombre_usuario:  Optional[str]
+    bodega_id:       Optional[int] = None   # local de ESTA venta (migración 018)
+    local:           Optional[str] = None   # "San Pedro Tultepec - Local Jose"
     partidas:        list[PartidaOut]
     pagos_resumen:   PagosResumen   # desglose de cómo se ha cobrado (ver tabla pagos)
 
@@ -322,6 +331,14 @@ async def _restaurar_inventario(conn, folio: str) -> None:
         )
 
 
+async def _sucursal_de_bodega(cur, bodega_id: int) -> Optional[int]:
+    await cur.execute("SELECT sucursal_id FROM bodegas WHERE id = %s", (bodega_id,))
+    fila = await cur.fetchone()
+    if fila is None:
+        raise HTTPException(status_code=422, detail="El local elegido no existe.")
+    return fila[0]
+
+
 # Mapeadores de filas a dicts (evitan repetir los índices en cada endpoint)
 
 def _fila_a_resumen(r) -> dict:
@@ -342,6 +359,8 @@ def _fila_a_resumen(r) -> dict:
         "usuario_id":     r[11],
         "nombre_usuario": r[12],
         "num_partidas":   r[13],
+        "bodega_id":      r[15],
+        "local":          r[16],
     }
 
 
@@ -363,6 +382,8 @@ def _fila_a_detalle(r) -> dict:
         "foto_nota":       r[13],
         "usuario_id":      r[14],
         "nombre_usuario":  r[15],
+        "bodega_id":       r[16],
+        "local":           r[17],
     }
 
 
@@ -457,10 +478,13 @@ _SQL_DETALLE = """
         n.sucursal_id,
         n.nombre_cliente, n.telefono,
         n.consideraciones, n.foto_nota,
-        n.usuario_id, u.nombre AS nombre_usuario
+        n.usuario_id, u.nombre AS nombre_usuario,
+        n.bodega_id, sb.nombre || ' - ' || b.nombre AS local
     FROM  notas    n
     LEFT  JOIN usuarios u  ON u.id  = n.usuario_id
     LEFT  JOIN usuarios uv ON uv.id = n.vendedor_id
+    LEFT  JOIN bodegas    b  ON b.id  = n.bodega_id
+    LEFT  JOIN sucursales sb ON sb.id = b.sucursal_id
     WHERE n.folio = %s
 """
 
@@ -492,6 +516,10 @@ async def crear_nota(
             if fila_vendedor is not None:
                 sucursal_id = fila_vendedor[0]
 
+        # El local manda: si se eligió uno, la sucursal es la de ese local.
+        if data.bodega_id is not None:
+            sucursal_id = await _sucursal_de_bodega(cur, data.bodega_id)
+
         # anticipo no se inserta aquí: arranca en su default de columna (0)
         # y de ahí en adelante lo mantiene trg_recalcular_anticipo (migración
         # 015) en cuanto la nota reciba su primer pago.
@@ -500,8 +528,8 @@ async def crear_nota(
             INSERT INTO notas
               (folio, fecha_pedido, fecha_entrega, estatus, total,
                vendedor_id, nombre_cliente, telefono, consideraciones, foto_nota,
-               usuario_id, sucursal_id)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               usuario_id, sucursal_id, bodega_id)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
                 folio,
@@ -516,6 +544,7 @@ async def crear_nota(
                 data.foto_nota,
                 usuario.id,
                 sucursal_id,
+                data.bodega_id,
             ),
         )
 
@@ -546,6 +575,7 @@ async def listar_notas(
     # Filtros backend — se combinan con AND; todos son opcionales
     vendedor_id: Optional[int]  = Query(None, description="Filtrar por vendedor_id (usuario que hizo la venta)"),
     sucursal_id: Optional[int]  = Query(None, description="Filtrar por sucursal_id (sucursal donde ocurrió la venta)"),
+    bodega_id:   Optional[int]  = Query(None, description="Filtrar por local (bodega_id) donde ocurrió la venta"),
     fecha_desde: Optional[date] = Query(None, description="Fecha de pedido desde (inclusive)"),
     fecha_hasta: Optional[date] = Query(None, description="Fecha de pedido hasta (inclusive)"),
     busqueda:    Optional[str]  = Query(None, description="Búsqueda en modificaciones y consideraciones"),
@@ -591,10 +621,13 @@ async def listar_notas(
                 WHERE  par.folio_pedido = n.folio
                 ORDER  BY par.precio_unitario DESC, par.id
                 LIMIT  1
-            ) AS nombre_ancla
+            ) AS nombre_ancla,
+            n.bodega_id, sb.nombre || ' - ' || b.nombre AS local
         FROM  notas    n
         LEFT  JOIN usuarios u  ON u.id  = n.usuario_id
         LEFT  JOIN usuarios uv ON uv.id = n.vendedor_id
+        LEFT  JOIN bodegas    b  ON b.id  = n.bodega_id
+        LEFT  JOIN sucursales sb ON sb.id = b.sucursal_id
     """
 
     # ── Condiciones dinámicas (todas hardcodeadas en SQL; user data solo en params) ─
@@ -612,6 +645,10 @@ async def listar_notas(
     if sucursal_id is not None:
         conditions.append("n.sucursal_id = %s")
         params.append(sucursal_id)
+
+    if bodega_id is not None:
+        conditions.append("n.bodega_id = %s")
+        params.append(bodega_id)
 
     if fecha_desde is not None:
         conditions.append("n.fecha_pedido >= %s")
@@ -717,6 +754,11 @@ async def editar_nota(
     # request. Así un PUT parcial no pisa los campos que el cliente no tocó.
     campos = data.model_dump(exclude_unset=True, exclude={"partidas"})
     nuevo_estatus = campos.get("estatus")  # None si el request no incluyó estatus
+
+    # Cambiar el local también cambia la sucursal (la del local nuevo).
+    if campos.get("bodega_id") is not None:
+        async with conn.cursor() as cur:
+            campos["sucursal_id"] = await _sucursal_de_bodega(cur, campos["bodega_id"])
 
     # ── Inventario: restaurar ANTES de reemplazar partidas ───────────────────
     # La restauración usa las partidas ACTUALES (las que se descontaron al
@@ -901,7 +943,7 @@ def _generar_pdf_bytes(nota: dict, partidas: list) -> bytes:
     pdf.cell(texto_w, 5, "San Pedro Tultepec, Lerma, Estado de México", ln=True)
 
     pdf.set_x(x_titulo)
-    pdf.cell(texto_w, 5, "Tel: (722) 572-7393", ln=True)
+    pdf.cell(texto_w, 5, "Tel: (722) 572-3939", ln=True)
 
     # Asegurar que bajamos al menos hasta debajo del logo
     pdf.set_y(max(pdf.get_y(), y0 + 24))

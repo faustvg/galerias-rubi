@@ -86,7 +86,7 @@ export default function Notas() {
   // ── Estado ──────────────────────────────────────────────────────────────────
   const [notas,       setNotas]       = useState([])
   const [vendedores,  setVendedores]  = useState([])
-  const [sucursales,  setSucursales]  = useState([])
+  const [locales,     setLocales]     = useState([])
   const [cargando,    setCargando]    = useState(true)
   const [error,       setError]       = useState(null)
 
@@ -99,7 +99,7 @@ export default function Notas() {
   // Filtros backend — un re-fetch ocurre cuando cualquiera cambia
   const [filtros, setFiltros] = useState({
     vendedor_id: '',
-    sucursal_id: '',
+    bodega_id: '',
     fecha_desde:  '',
     fecha_hasta:  '',
     busqueda:     '',
@@ -110,7 +110,7 @@ export default function Notas() {
 
   const esWorker       = usuario?.rol === 'worker'
   const puedeEscribir  = ['superadmin', 'admin', 'worker'].includes(usuario?.rol)
-  const hayFiltrosBE   = filtros.vendedor_id || filtros.sucursal_id || filtros.fecha_desde ||
+  const hayFiltrosBE   = filtros.vendedor_id || filtros.bodega_id || filtros.fecha_desde ||
                          filtros.fecha_hasta  || filtros.busqueda
 
   // ── Debounce de busqueda: aplica 400ms después de que el usuario para ─────
@@ -134,14 +134,14 @@ export default function Notas() {
       .catch(() => {})
   }, [esWorker, usuario])
 
-  // ── Cargar opciones del filtro de sucursal — no es dato sensible entre
-  // workers (a diferencia de comparar vendedores), así que se carga para
-  // todos los roles que pueden ver esta lista.
+  // ── Cargar opciones del filtro de local (migración 018) — no es dato
+  // sensible entre workers. GET /bodegas exige rol de escritura: para un
+  // viewer regresa 403 y el filtro simplemente no aparece.
   useEffect(() => {
     if (!usuario) return
-    apiFetch('/sucursales')
+    apiFetch('/bodegas')
       .then((r) => (r.ok ? r.json() : []))
-      .then(setSucursales)
+      .then((bs) => setLocales(bs.filter((b) => b.activo)))
       .catch(() => {})
   }, [usuario])
 
@@ -155,7 +155,7 @@ export default function Notas() {
     try {
       const params = new URLSearchParams()
       if (filtros.vendedor_id) params.set('vendedor_id', filtros.vendedor_id)
-      if (filtros.sucursal_id) params.set('sucursal_id', filtros.sucursal_id)
+      if (filtros.bodega_id) params.set('bodega_id', filtros.bodega_id)
       if (filtros.fecha_desde)  params.set('fecha_desde',  filtros.fecha_desde)
       if (filtros.fecha_hasta)  params.set('fecha_hasta',  filtros.fecha_hasta)
       if (filtros.busqueda)     params.set('busqueda',     filtros.busqueda)
@@ -189,7 +189,7 @@ export default function Notas() {
 
   function limpiarFiltros() {
     setBusquedaInput('')
-    setFiltros({ vendedor_id: '', sucursal_id: '', fecha_desde: '', fecha_hasta: '', busqueda: '' })
+    setFiltros({ vendedor_id: '', bodega_id: '', fecha_desde: '', fecha_hasta: '', busqueda: '' })
     setFiltroEstatus('Todos')
   }
 
@@ -262,17 +262,19 @@ export default function Notas() {
             </select>
           )}
 
-          {sucursales.length > 0 && (
+          {locales.length > 0 && (
             <select
-              value={filtros.sucursal_id}
+              value={filtros.bodega_id}
               onChange={(e) =>
-                setFiltros((f) => ({ ...f, sucursal_id: e.target.value }))
+                setFiltros((f) => ({ ...f, bodega_id: e.target.value }))
               }
               className={selectCls}
             >
-              <option value="">Todas las sucursales</option>
-              {sucursales.map((s) => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
+              <option value="">Todos los locales</option>
+              {locales.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.sucursal_nombre ? `${b.sucursal_nombre} - ${b.nombre}` : b.nombre}
+                </option>
               ))}
             </select>
           )}
@@ -296,10 +298,10 @@ export default function Notas() {
             title="Fecha de pedido hasta"
           />
 
-          {(filtros.vendedor_id || filtros.sucursal_id || filtros.fecha_desde || filtros.fecha_hasta) && (
+          {(filtros.vendedor_id || filtros.bodega_id || filtros.fecha_desde || filtros.fecha_hasta) && (
             <button
               onClick={() =>
-                setFiltros((f) => ({ ...f, vendedor_id: '', sucursal_id: '', fecha_desde: '', fecha_hasta: '' }))
+                setFiltros((f) => ({ ...f, vendedor_id: '', bodega_id: '', fecha_desde: '', fecha_hasta: '' }))
               }
               className="text-sm text-amber-600 hover:text-amber-700 font-medium px-1"
             >

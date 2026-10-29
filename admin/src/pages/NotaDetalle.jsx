@@ -282,6 +282,7 @@ function ContenidoNota({ nota, usuario, puedeEscribir, navigate }) {
           <Campo etiqueta="Pedido"   valor={formatFecha(nota.fecha_pedido)} />
           <Campo etiqueta="Entrega"  valor={formatFecha(nota.fecha_entrega)} />
           {nota.vendedor && <Campo etiqueta="Vendedor" valor={nota.vendedor} />}
+          {nota.local && <Campo etiqueta="Local" valor={nota.local} />}
         </div>
       </div>
 

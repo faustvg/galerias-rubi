@@ -546,21 +546,21 @@ async def historico_utilidad(
             )
         prov_rows = await cur.fetchall()
 
-        # ── Por sucursal ────────────────────────────────────────────────────────
+        # ── Por local (migración 018) ───────────────────────────────────────────────────
         if es_worker:
             await cur.execute(
                 """
                 SELECT
-                    COALESCE(s.nombre, 'Sin sucursal') AS nombre,
+                    COALESCE(b.nombre, 'Sin local') AS nombre,
                     COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
                 FROM partidas par
                 JOIN notas n ON n.folio = par.folio_pedido
                 JOIN productos prod ON prod.id = par.producto_id
-                LEFT JOIN sucursales s ON s.id = n.sucursal_id
+                LEFT JOIN bodegas b ON b.id = n.bodega_id
                 WHERE n.estatus != 'Cancelado'
                   AND n.fecha_pedido BETWEEN %s AND %s
                   AND n.usuario_id = %s
-                GROUP BY s.nombre ORDER BY utilidad DESC
+                GROUP BY b.nombre ORDER BY utilidad DESC
                 """,
                 (fecha_desde, fecha_hasta, usuario.id),
             )
@@ -568,15 +568,15 @@ async def historico_utilidad(
             await cur.execute(
                 """
                 SELECT
-                    COALESCE(s.nombre, 'Sin sucursal') AS nombre,
+                    COALESCE(b.nombre, 'Sin local') AS nombre,
                     COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
                 FROM partidas par
                 JOIN notas n ON n.folio = par.folio_pedido
                 JOIN productos prod ON prod.id = par.producto_id
-                LEFT JOIN sucursales s ON s.id = n.sucursal_id
+                LEFT JOIN bodegas b ON b.id = n.bodega_id
                 WHERE n.estatus != 'Cancelado'
                   AND n.fecha_pedido BETWEEN %s AND %s
-                GROUP BY s.nombre ORDER BY utilidad DESC
+                GROUP BY b.nombre ORDER BY utilidad DESC
                 """,
                 (fecha_desde, fecha_hasta),
             )
@@ -609,7 +609,7 @@ async def historico_utilidad(
         "por_proveedor": [
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in prov_rows
         ],
-        "por_sucursal": [
+        "por_local": [
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in suc_rows
         ],
         "por_worker": [
@@ -1016,3 +1016,127 @@ async def cobros_periodo(
             for r in rows
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/historico/serie
+# ---------------------------------------------------------------------------
+# Ventas, cobros y gasto de restock DÍA POR DÍA del periodo, para las
+# gráficas de Histórico.
+# Un renglón por cada día del rango (generate_series), también los días en
+# cero — así la gráfica no salta días y el frontend puede acumular directo.
+#
+# Mismos criterios que los totales de la página, para que la gráfica y el
+# número grande nunca se contradigan:
+#   - ventas: SUM(notas.total) por fecha_pedido, estatus != 'Cancelado'
+#     (igual que total_ventas en /historico/resumen)
+#   - cobros: SUM(pagos.monto) por pagos.fecha, sin 'saldo_previo'
+#     (igual que cobrado_total en /cobros-periodo)
+#   - restock: SUM(movimientos_inventario.costo_total) por fecha; entradas
+#     sin costo cuentan 0 (igual que gasto_total en /gasto-restock/detalle)
+# Worker ve solo sus notas (n.usuario_id) en ventas/cobros; el restock no
+# es de nadie en particular, así que no se filtra (igual que /gasto-restock).
+# ---------------------------------------------------------------------------
+
+@router.get("/historico/serie")
+async def historico_serie(
+    fecha_desde: date = Query(..., description="Inicio del periodo (inclusive)"),
+    fecha_hasta: date = Query(..., description="Fin del periodo (inclusive)"),
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+    conn=Depends(get_db),
+):
+    if fecha_hasta < fecha_desde:
+        raise HTTPException(status_code=422, detail="fecha_hasta es anterior a fecha_desde")
+    if (fecha_hasta - fecha_desde).days > 366:
+        raise HTTPException(status_code=422, detail="El rango máximo es de un año")
+
+    filtro_worker = " AND n.usuario_id = %(usuario_id)s" if usuario.rol == "worker" else ""
+
+    sql = f"""
+        WITH dias AS (
+            SELECT d::date AS dia
+            FROM generate_series(%(desde)s::date, %(hasta)s::date, interval '1 day') AS d
+        ),
+        ventas AS (
+            SELECT n.fecha_pedido AS dia, SUM(n.total) AS monto
+            FROM notas n
+            WHERE n.estatus != 'Cancelado'
+              AND n.fecha_pedido BETWEEN %(desde)s AND %(hasta)s
+              {filtro_worker}
+            GROUP BY n.fecha_pedido
+        ),
+        cobros AS (
+            SELECT pg.fecha AS dia, SUM(pg.monto) AS monto
+            FROM pagos pg
+            JOIN notas n ON n.folio = pg.folio_pedido
+            WHERE pg.fecha BETWEEN %(desde)s AND %(hasta)s
+              AND pg.tipo IS DISTINCT FROM 'saldo_previo'
+              {filtro_worker}
+            GROUP BY pg.fecha
+        ),
+        restock AS (
+            SELECT m.fecha AS dia, SUM(m.costo_total) AS monto
+            FROM movimientos_inventario m
+            WHERE m.fecha BETWEEN %(desde)s AND %(hasta)s
+            GROUP BY m.fecha
+        )
+        SELECT dias.dia, COALESCE(v.monto, 0), COALESCE(c.monto, 0), COALESCE(r.monto, 0)
+        FROM dias
+        LEFT JOIN ventas v ON v.dia = dias.dia
+        LEFT JOIN cobros c ON c.dia = dias.dia
+        LEFT JOIN restock r ON r.dia = dias.dia
+        ORDER BY dias.dia
+    """
+    params = {"desde": fecha_desde, "hasta": fecha_hasta, "usuario_id": usuario.id}
+
+    # Mismos montos, partidos por local (migración 018) para las gráficas
+    # apiladas. Notas/entradas sin local caen en 'Sin local'.
+    sql_locales = f"""
+        SELECT n.fecha_pedido, 'ventas', COALESCE(b.nombre, 'Sin local'), SUM(n.total)
+        FROM notas n
+        LEFT JOIN bodegas b ON b.id = n.bodega_id
+        WHERE n.estatus != 'Cancelado'
+          AND n.fecha_pedido BETWEEN %(desde)s AND %(hasta)s
+          {filtro_worker}
+        GROUP BY 1, 3
+        UNION ALL
+        SELECT pg.fecha, 'cobros', COALESCE(b.nombre, 'Sin local'), SUM(pg.monto)
+        FROM pagos pg
+        JOIN notas n ON n.folio = pg.folio_pedido
+        LEFT JOIN bodegas b ON b.id = n.bodega_id
+        WHERE pg.fecha BETWEEN %(desde)s AND %(hasta)s
+          AND pg.tipo IS DISTINCT FROM 'saldo_previo'
+          {filtro_worker}
+        GROUP BY 1, 3
+        UNION ALL
+        SELECT m.fecha, 'restock', COALESCE(b.nombre, 'Sin local'), SUM(m.costo_total)
+        FROM movimientos_inventario m
+        LEFT JOIN bodegas b ON b.id = m.bodega_id
+        WHERE m.fecha BETWEEN %(desde)s AND %(hasta)s
+          AND m.costo_total IS NOT NULL
+        GROUP BY 1, 3
+    """
+
+    async with conn.cursor() as cur:
+        await cur.execute(sql, params)
+        rows = await cur.fetchall()
+        await cur.execute(sql_locales, params)
+        filas_local = await cur.fetchall()
+
+    por_dia = {
+        r[0]: {
+            "fecha":   r[0].isoformat(),
+            "ventas":  float(r[1]),
+            "cobros":  float(r[2]),
+            "restock": float(r[3]),
+            "ventas_local":  {},
+            "cobros_local":  {},
+            "restock_local": {},
+        }
+        for r in rows
+    }
+    for dia, tipo, local, monto in filas_local:
+        if monto:
+            por_dia[dia][f"{tipo}_local"][local] = float(monto)
+
+    return list(por_dia.values())
