@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
 import api.database as database
+import api.limite_login as limite_login
 from api.auth import get_usuario_actual, pwd_context, UsuarioActual
 from api.routers.catalogo    import router as catalogo_router
 from api.routers.dashboard   import router as dashboard_router
@@ -134,12 +135,31 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _texto_espera(segundos: int) -> str:
+    if segundos <= 60:
+        return "un minuto"
+    return f"{-(-segundos // 60)} minutos"
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints  →  /api/login  /api/logout  /api/yo
 # ---------------------------------------------------------------------------
 
 @api_router.post("/login")
 async def login(data: LoginRequest, request: Request, conn=Depends(database.get_db)):
+    # Anti fuerza bruta: se revisa ANTES de tocar la contraseña (ver api/limite_login.py).
+    # X-Real-IP lo pone nginx con $remote_addr (pisa lo que mande el cliente);
+    # X-Forwarded-For no sirve aquí porque nginx le AGREGA la IP real a lo que
+    # el cliente ya haya mandado. Sin nginx (local) se usa la conexión directa.
+    ip = request.headers.get("x-real-ip") or (request.client.host if request.client else "desconocida")
+    espera = limite_login.segundos_bloqueado(ip, data.username)
+    if espera:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Demasiados intentos fallidos. Espera {_texto_espera(espera)} e intenta de nuevo.",
+            headers={"Retry-After": str(espera)},
+        )
+
     async with conn.cursor() as cur:
         await cur.execute(
             "SELECT id, username, nombre, rol, activo, password_hash "
@@ -152,16 +172,19 @@ async def login(data: LoginRequest, request: Request, conn=Depends(database.get_
     # de respuesta sea igual que cuando sí existe (anti timing-attack).
     if row is None:
         pwd_context.dummy_verify()
+        limite_login.registrar_fallo(ip, data.username)
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
     _id, _username, _nombre, _rol, activo, password_hash = row
 
     if not pwd_context.verify(data.password, password_hash):
+        limite_login.registrar_fallo(ip, data.username)
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
     if not activo:
         raise HTTPException(status_code=403, detail="Usuario inactivo")
 
+    limite_login.registrar_exito(ip, data.username)
     request.session["user_id"] = _id
     return {"ok": True, "username": _username, "nombre": _nombre, "rol": _rol}
 

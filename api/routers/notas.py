@@ -822,7 +822,7 @@ async def eliminar_nota(
 #   2. Al final del documento (zona de cierre, refuerzo legal)
 # ---------------------------------------------------------------------------
 
-_LOGO_RUTA = Path("web-publico/assets/logo_transparente.png")
+_LOGO_RUTA = Path("web-publico/assets/logo.png")
 
 
 def _fmt_mxn(valor) -> str:
@@ -894,14 +894,14 @@ def _generar_pdf_bytes(nota: dict, partidas: list) -> bytes:
     texto_w = W - (x_titulo - 15)
     pdf.set_xy(x_titulo, y0)
     pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(texto_w, 9, "Galerías Rubí", ln=True)
+    pdf.cell(texto_w, 9, "Muebles Rubí", ln=True)
 
     pdf.set_x(x_titulo)
     pdf.set_font("Helvetica", "", 9)
     pdf.cell(texto_w, 5, "San Pedro Tultepec, Lerma, Estado de México", ln=True)
 
     pdf.set_x(x_titulo)
-    pdf.cell(texto_w, 5, "Tel: (722) 572-7393 ext. 9", ln=True)
+    pdf.cell(texto_w, 5, "Tel: (722) 572-7393", ln=True)
 
     # Asegurar que bajamos al menos hasta debajo del logo
     pdf.set_y(max(pdf.get_y(), y0 + 24))
