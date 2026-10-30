@@ -257,15 +257,15 @@ async def utilidad(
             await cur.execute(
                 """
                 SELECT
-                    COALESCE(s.nombre, 'Sin sucursal') AS nombre,
+                    COALESCE(b.nombre, 'Sin local') AS nombre,
                     COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
                 FROM partidas par
                 JOIN notas n ON n.folio = par.folio_pedido
                 JOIN productos prod ON prod.id = par.producto_id
-                LEFT JOIN sucursales s ON s.id = n.sucursal_id
+                LEFT JOIN bodegas b ON b.id = n.bodega_id
                 WHERE n.estatus != 'Cancelado'
                   AND n.usuario_id = %s
-                GROUP BY s.nombre
+                GROUP BY b.nombre
                 ORDER BY utilidad DESC
                 """,
                 (usuario.id,),
@@ -274,14 +274,14 @@ async def utilidad(
             await cur.execute(
                 """
                 SELECT
-                    COALESCE(s.nombre, 'Sin sucursal') AS nombre,
+                    COALESCE(b.nombre, 'Sin local') AS nombre,
                     COALESCE(SUM(par.cantidad * (prod.precio_base - prod.costo)), 0) AS utilidad
                 FROM partidas par
                 JOIN notas n ON n.folio = par.folio_pedido
                 JOIN productos prod ON prod.id = par.producto_id
-                LEFT JOIN sucursales s ON s.id = n.sucursal_id
+                LEFT JOIN bodegas b ON b.id = n.bodega_id
                 WHERE n.estatus != 'Cancelado'
-                GROUP BY s.nombre
+                GROUP BY b.nombre
                 ORDER BY utilidad DESC
                 """
             )
@@ -313,7 +313,7 @@ async def utilidad(
         "por_proveedor": [
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in prov_rows
         ],
-        "por_sucursal": [
+        "por_local": [
             {"nombre": r[0], "utilidad": float(r[1] or 0)} for r in suc_rows
         ],
         "por_worker": [

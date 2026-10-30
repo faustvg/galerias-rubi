@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Actualizado:** 2026-10-27, tras el cambio de laptop (Windows → MacBook),
-el fix de cookie/CORS en producción y la verificación de que 001–016 están
-aplicadas. Si trabajaste en este repo antes de esa fecha, revisa las
+**Actualizado:** 2026-10-29, tras la migración 018 (local de venta en cada
+nota), el rediseño del Histórico, la paleta del sitio en el panel, el límite
+de intentos de login y el fix de caché de nginx para `/admin/`. Si trabajaste en este repo antes de esa fecha, revisa las
 secciones marcadas ⚠️ — cambiaron.
 
 El estado del proyecto, decisiones de negocio y pendientes viven en
@@ -63,7 +63,7 @@ psql -U <user> -d <dbname> -f db/schema.sql    # inicializar una base nueva desd
 ```
 
 Para bases existentes, aplicar migraciones individuales de `db/migrations/`
-en orden (001–016) — nunca reaplicar `schema.sql` sobre una base con datos.
+en orden (001–018, sin 017) — nunca reaplicar `schema.sql` sobre una base con datos.
 
 ### Environment variables
 
@@ -134,11 +134,17 @@ página — no hay archivo JSON intermedio ni paso de publicación manual.
 ⚠️ **El sitio en vivo (`mueblesrubimx.com`) se despliega 100% a mano**:
 SSH al VPS → `cd ~/galerias-rubi && git pull origin main` (+ reiniciar
 `galerias-api.service` si cambió `api/`, + `npm run build` en `admin/` si
-cambió el panel). El workflow `.github/workflows/deploy-pages.yml` publica
+cambió el panel). **Si hay migración nueva, va ANTES de reiniciar la
+API** (el código nuevo ya la usa), siempre con `pg_dump` previo a
+`~/backups/`. El workflow `.github/workflows/deploy-pages.yml` publica
 `web-publico/` en **GitHub Pages**, un destino aparte que el dominio NO
 usa — su existencia no significa que el sitio real se actualice solo.
 Después de un deploy, confirmar que `git log --oneline -1` en el VPS
 coincide con el commit que se empujó.
+
+nginx sirve `/admin/` con `Cache-Control: no-cache` y `/admin/assets/`
+(JS/CSS con hash de Vite) con caché de 1 año `immutable` (2026-10-29). Tras
+un `npm run build` basta con recargar normal — no hace falta Cmd+Shift+R.
 
 ### Folder layout
 
@@ -161,8 +167,9 @@ galerias-rubi/
 
 `schema.sql` es un snapshot completo; `db/migrations/` es la fuente de
 verdad histórica cuando difieran. Migraciones aplicadas en producción:
-001–016 (verificado 2026-10-27). `017_sucursales_locales_reales.sql` es una
-propuesta sin aplicar y sin commitear — ver `muebles_rubi.md`.
+001–016 y 018 (018 aplicada 2026-10-29). `017_sucursales_locales_reales.sql`
+quedó descartada (sin commitear): la reemplazó 018, que no toca `sucursales`
+ni el sitio público.
 
 Tablas principales:
 
@@ -174,16 +181,18 @@ Tablas principales:
 | `usuarios` | Login del panel; también hace de "vendedores" (`rol`: superadmin/admin/viewer/worker). `sucursal_id` = asignación ACTUAL, editable, no histórica |
 | `sucursales` | 2 filas: San Pedro Tultepec (`es_principal=true`) y Ciudad de México (`es_principal=false`). Columnas: `direccion`, `maps_url`, `whatsapp`, `ocultar_precio_publico`, `activo`, `lat`/`lng` (nullable, migración 014) |
 | `producto_sucursal` | Solo tiene fila cuando un producto TAMBIÉN se vende en CDMX — `producto_id, sucursal_id, precio`. San Pedro usa `productos.precio_base` directo, sin fila aquí |
-| `bodegas` | Catálogo de ubicaciones físicas de inventario, cada una ligada a una `sucursal_id`. NO es lo mismo que `sucursales` — bodega es logística interna, sucursal es entidad de venta |
-| `notas` | Pedido/cotización. Datos de cliente **desnormalizados** (`nombre_cliente`, `telefono`) — no hay tabla de clientes separada. `folio` es texto (PK, ticket de papel, ej. `'0986'`). `resta` es columna generada (`total - anticipo`). `sucursal_id` se congela al crear la nota (copiado del vendedor en ese momento) — NO se recalcula si el vendedor cambia de sucursal después |
+| `bodegas` | Los 4 locales físicos, cada uno ligado a una `sucursal_id`: Local Jose, Local Amarillo y Almacen (San Pedro) y Local 17 (CDMX; se llamaba "Local Mexico" hasta la 018). Sirven para inventario Y, desde la migración 018, como local de venta de cada nota. En el panel se muestran como `"<sucursal> - <bodega>"` |
+| `notas` | Pedido/cotización. Datos de cliente **desnormalizados** (`nombre_cliente`, `telefono`) — no hay tabla de clientes separada. `folio` es texto (PK, ticket de papel, ej. `'0986'`). `resta` es columna generada (`total - anticipo`). `vendedor_id` = quien vendió; `usuario_id` = quien capturó (el filtro de worker usa `usuario_id`). `bodega_id` (migración 018) = local donde se vendió, **obligatorio en el formulario** (no en la base) porque una vendedora no siempre vende en el mismo local; `sucursal_id` lo deriva el backend del local (`_sucursal_de_bodega` en `notas.py`). El histórico se asignó por vendedora: Irma y Michelle → Local Jose, María Isabel → Local Amarillo, Faustino → Local 17 |
 | `partidas` | Líneas de una nota (bridge many-to-many `notas`↔`productos`). `importe` es generado (`cantidad * precio_unitario`). `producto_id` nullable para ítems sueltos fuera de catálogo. Cascada de borrado desde `notas` |
 | `pagos` | Abonos contra una nota |
 | `movimientos_inventario` | Historial de entradas de stock; trigger `trg_recalcular_existencias` deriva `productos.existencias`/`fecha_ingreso`/`ubicaciones`. `bodega_id` es columna aditiva en paralelo, no reemplaza `ubicacion` (texto libre) |
 | `testimonios` | Curados a mano desde el panel (`Testimonios.jsx`) — `texto, autor, ciudad, activo, orden` |
 
-**Importante — "sucursal" ≠ "ubicación"/bodega.** Son conceptos
-deliberadamente separados; `sucursal_id` nunca debe confundirse con
-`ubicacion`/`bodega_id`.
+**Importante — "sucursal" ≠ local/bodega.** La sucursal es la entidad legal
+de venta (2 filas, la usa el sitio público y la regla de precios CDMX); el
+local/bodega es el lugar físico (4 filas). Una nota guarda los dos y la
+sucursal siempre es la del local. Los reportes internos (Histórico) parten
+por local; el sitio público solo conoce sucursales.
 
 ### ⚠️ Regla de precio para productos disponibles en CDMX (decisión de los dueños, agosto 2026)
 
@@ -219,7 +228,7 @@ api/
 ├── auth.py              ← pwd_context, UsuarioActual, get_usuario_actual, requiere_roles
 ├── routers/
 │   ├── catalogo.py      ← productos CRUD (incl. disponible_cdmx/precio_cdmx → upsert en producto_sucursal) + movimientos de inventario
-│   ├── dashboard.py     ← reporting/KPIs, incluye desglose "por_sucursal" (visible a todos los roles, no oculto como "por vendedor")
+│   ├── dashboard.py     ← reporting/KPIs. Histórico: /historico/resumen|utilidad|serie (serie = montos por día con desglose *_local por local; utilidad trae por_local); Inicio usa /resumen (resta), /entregas-proximas y las mismas /historico/serie y /historico/utilidad con la ventana elegida; /dashboard/utilidad (acumulada) ya no la usa el panel
 │   ├── fotos.py         ← endpoints de subida de fotos
 │   ├── notas.py         ← notas (pedidos/cotizaciones) + pagos. ⚠️ query compartida _SQL_DETALLE con índices posicionales hardcodeados, ver Pendientes
 │   ├── publico.py       ← GETs sin auth para web-publico/: productos, categorías, sucursales, testimonios (oculta costo/existencias)
@@ -314,6 +323,28 @@ compartida.
   `logo_transparente.png` (en `assets/`, ya no referenciado en ningún HTML)
   tiene un defecto real — nunca volver a usarlo ni enlazarlo.
 
+### Panel (`admin/`) — tema y Histórico
+
+- **Paleta del sitio** (2026-10-29): `admin/tailwind.config.js` redefine las
+  escalas `amber` (→ terracota, `amber-600` = `#A46447` del sitio) y `gray`
+  (→ neutros cálidos crema/arena/café). Por eso el código sigue usando
+  `amber-*`/`gray-*` en todos lados — no cambiar a otros nombres. Fuentes:
+  Jost (`font-sans`) y Cormorant Garamond (`font-serif`, títulos), cargadas
+  en `admin/index.html`. Colores fijos por local en `lib/theme.js`
+  (`COLORES_LOCAL`); Recharts necesita hex literales, no clases.
+- **Piezas compartidas** en `components/Tablero.jsx` (Tarjeta, Delta,
+  TarjetaKpi, TarjetaGrafica con columnas apiladas por local, TablaUtilidad):
+  Inicio y Histórico las importan de ahí — un cambio de estilo se hace una
+  sola vez.
+- **Inicio** (`pages/Dashboard.jsx`): ventana reciente (1 sem / 2 sem / 1 mes
+  hasta hoy) contra la ventana anterior del mismo largo; Ventas y Cobros por
+  local, resta por cobrar, próximas entregas y rentabilidad de la ventana.
+- **Histórico** (`pages/Historico.jsx`): KPIs arriba, tres columnas Ventas /
+  Cobros / Gasto de restock con columnas apiladas por local (día, semana o
+  mes según el largo del periodo) y su lista debajo, y "Rentabilidad"
+  (utilidad por categoría/proveedor/local/vendedor). Todo se compara contra
+  el periodo anterior (`rangoAnterior` en `lib/periodos.js`).
+
 ## Pendientes técnicos
 
 Identificados durante la implementación de multi-sucursal (migración 011),
@@ -343,7 +374,13 @@ un refactor de convención de todo el backend:
    no hay fuga de precio de sucursal — pero siguen siendo superficie pública
    innecesaria que debería vivir detrás de sesión igual que el resto de
    `/api`.
-3. Si se agrega una tercera sucursal algún día: refactorizar el patrón
+3. **La utilidad es poco confiable hoy**: se calcula como `precio_base −
+   costo` del catálogo, no con el precio real de la nota, y al 2026-10-29
+   37 de 38 productos tienen `costo` = 0 (default de la migración 004) o
+   `costo` = precio (capturado mal). Primero hay que capturar costos reales
+   en el panel; después, calcular con el precio real de la nota (repartir
+   `notas.total` entre sus partidas) y excluir artículos sin costo.
+4. Si se agrega una tercera sucursal algún día: refactorizar el patrón
    `es_principal` (asume exactamente 2) a un modelo genérico de N
    sucursales — afecta `publico.py`, el JS de `web-publico/`, y
    probablemente el diseño de la "ficha de sucursales".
